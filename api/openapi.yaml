@@ -1,0 +1,121 @@
+openapi: 3.0.3
+info:
+  title: Corporate Event Ticketing System API
+  description: 企業活動票務系統後端 API 規格，前端開發可依此 Mock，後端依此實作。
+  version: 1.0.0
+servers:
+  - url: http://localhost:8001/v1
+    description: 本地開發環境
+paths:
+  /auth/login:
+    post:
+      summary: 使用者登入
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                employee_id:
+                  type: string
+                  example: "EMP001"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /events:
+    get:
+      summary: 取得活動列表
+      tags:
+        - Events
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, published, closed, ended]
+      responses:
+        "200":
+          description: OK
+
+    post:
+      summary: 建立新活動 (Manager)
+      tags:
+        - Events
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Created
+
+  /applications:
+    post:
+      summary: 申請票券 (Employee)
+      tags:
+        - Applications
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_id:
+                  type: string
+                  format: uuid
+                ticket_type_id:
+                  type: string
+                  format: uuid
+                quantity:
+                  type: integer
+                  minimum: 1
+                idempotency_key:
+                  type: string
+      responses:
+        "200":
+          description: 成功申請或進入待審核狀態
+        "403":
+          description: 不符資格
+        "409":
+          description: 票已售罄
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            user:
+              type: object
+              properties:
+                id:
+                  type: string
+                employee_id:
+                  type: string
+                role:
+                  type: string
+                  enum: [employee, event_manager, hr]
