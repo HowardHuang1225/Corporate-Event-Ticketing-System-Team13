@@ -72,10 +72,15 @@ func (h *ReportHandler) AllEventsOverview(c *gin.Context) {
 		CheckedIn int64  `json:"checked_in"`
 	}
 	var overview []EventOverview
-	h.db.Model(&model.Application{}).
-		Select("events.id as event_id, events.title, COUNT(*) as applied, SUM(CASE WHEN applications.status='approved' THEN 1 ELSE 0 END) as approved").
-		Joins("JOIN events ON applications.event_id = events.id").
-		Group("events.id, events.title").
+	h.db.Model(&model.Event{}).
+		Select(`
+			events.id as event_id, 
+			events.title, 
+			(SELECT COUNT(*) FROM applications WHERE applications.event_id = events.id) as applied,
+			(SELECT COUNT(*) FROM applications WHERE applications.event_id = events.id AND applications.status = 'approved') as approved,
+			(SELECT COUNT(*) FROM checkins JOIN tickets ON checkins.ticket_id = tickets.id WHERE tickets.event_id = events.id) as checked_in
+		`).
+		Order("events.start_time DESC").
 		Scan(&overview)
 	c.JSON(http.StatusOK, okResp(overview))
 }
