@@ -31,7 +31,7 @@ export default function Layout() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="sidebar-logo">🎫 Tickets</div>
+        <div className="sidebar-logo">🎫 Ticketing System</div>
         <nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>

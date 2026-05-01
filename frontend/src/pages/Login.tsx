@@ -31,7 +31,7 @@ export default function Login() {
       <div className="login-box">
         <div className="login-logo">
           <div className="login-logo-icon">🎫</div>
-          <div className="login-logo-title">員工票務系統</div>
+          <div className="login-logo-title">Ticketing System</div>
           <div className="login-logo-sub">Corporate Event Ticketing System</div>
         </div>
         <div className="login-card">
