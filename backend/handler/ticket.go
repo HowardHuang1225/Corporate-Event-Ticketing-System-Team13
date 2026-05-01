@@ -312,7 +312,7 @@ func (h *TicketHandler) Checkin(c *gin.Context) {
 	}
 
 	var ticket model.Ticket
-	h.db.Preload("Event").Preload("TicketType").First(&ticket, "qr_token = ?", req.QRToken)
+	h.db.Preload("Event").Preload("TicketType").Preload("User").First(&ticket, "qr_token = ?", req.QRToken)
 
 	checkin := model.Checkin{TicketID: ticket.ID, CheckedBy: checkerID}
 	h.db.Create(&checkin)

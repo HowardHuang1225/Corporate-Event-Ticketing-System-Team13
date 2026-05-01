@@ -17,6 +17,10 @@ type DeptStat struct {
 	Department string `json:"department"`
 	Count      int64  `json:"count"`
 }
+type RegionStat struct {
+	Region string `json:"region"`
+	Count  int64  `json:"count"`
+}
 type TypeStat struct {
 	TicketTypeName string `json:"ticket_type_name"`
 	Total          int64  `json:"total"`
@@ -46,6 +50,13 @@ func (h *ReportHandler) EventStats(c *gin.Context) {
 		Where("applications.event_id = ? AND applications.status = 'approved'", eventID).
 		Group("users.department").Scan(&deptStats)
 
+	var regionStats []RegionStat
+	h.db.Model(&model.Application{}).
+		Select("users.region, COUNT(*) as count").
+		Joins("JOIN users ON applications.user_id = users.id").
+		Where("applications.event_id = ? AND applications.status = 'approved'", eventID).
+		Group("users.region").Scan(&regionStats)
+
 	var typeStats []TypeStat
 	h.db.Model(&model.Application{}).
 		Select("ticket_types.name as ticket_type_name, COUNT(*) as total, SUM(CASE WHEN applications.status = 'approved' THEN 1 ELSE 0 END) as approved").
@@ -59,6 +70,7 @@ func (h *ReportHandler) EventStats(c *gin.Context) {
 		"total_approved":   totalApproved,
 		"total_checked_in": totalCheckedIn,
 		"by_department":    deptStats,
+		"by_region":        regionStats,
 		"by_ticket_type":   typeStats,
 	}))
 }

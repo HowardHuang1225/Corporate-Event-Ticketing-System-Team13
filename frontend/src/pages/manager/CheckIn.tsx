@@ -84,8 +84,11 @@ export default function CheckIn() {
               <div className="checkin-result-icon">{result.type === 'success' ? '✅' : '❌'}</div>
               <div className="checkin-result-msg">{result.message}</div>
               {result.ticket && (
-                <div style={{ fontSize: 12, marginTop: 8, opacity: 0.8 }}>
-                  持票人：{result.ticket.user_id?.slice(0, 8) ?? '—'}
+                <div style={{ fontSize: 13, marginTop: 12, padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                  <div style={{ fontWeight: 600 }}>{result.ticket.user?.name ?? '—'} ({result.ticket.user?.employee_id ?? '—'})</div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                    {result.ticket.user?.department} · {result.ticket.user?.region}
+                  </div>
                 </div>
               )}
             </div>

@@ -42,7 +42,10 @@ export default function Layout() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user-name">{user?.name}</div>
-          <div className="sidebar-user-role">{user?.role === 'event_manager' ? '活動管理員' : user?.role === 'hr' ? '人資部門' : '員工'}</div>
+          <div className="sidebar-user-role">
+            {user?.role === 'event_manager' ? '活動管理員' : user?.role === 'hr' ? '人資部門' : '員工'}
+            {user?.region && <span> · {user.region}</span>}
+          </div>
           <button className="logout-btn" onClick={handleLogout}>
             <LogOut size={14} style={{ marginRight: 4 }} /> 登出
           </button>

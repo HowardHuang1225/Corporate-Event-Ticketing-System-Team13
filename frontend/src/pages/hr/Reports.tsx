@@ -145,7 +145,7 @@ export default function Reports() {
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
             <div className="card">
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, color: 'var(--text-secondary)' }}>部門分佈</h3>
               {(stats.by_department ?? []).length === 0 ? (
@@ -162,6 +162,30 @@ export default function Reports() {
                         </div>
                         <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
                           <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent-from), var(--accent-to))', transition: 'width 0.5s' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, color: 'var(--text-secondary)' }}>廠區分佈</h3>
+              {(stats.by_region ?? []).length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>尚無資料</div>
+              ) : (
+                <div>
+                  {(stats.by_region ?? []).map((r: any) => {
+                    const pct = stats.total_approved > 0 ? Math.round(r.count / stats.total_approved * 100) : 0
+                    return (
+                      <div key={r.region} style={{ marginBottom: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                          <span>{r.region || '未設定'}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{r.count} 人 ({pct}%)</span>
+                        </div>
+                        <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, var(--info), var(--accent))', transition: 'width 0.5s' }} />
                         </div>
                       </div>
                     )
