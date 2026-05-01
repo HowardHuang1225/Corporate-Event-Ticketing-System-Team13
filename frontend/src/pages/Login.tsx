@@ -30,8 +30,10 @@ export default function Login() {
     <div className="login-page">
       <div className="login-box">
         <div className="login-logo">
-          <div className="login-logo-icon">🎫</div>
-          <div className="login-logo-title">Ticketing System</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <div className="login-logo-icon" style={{ fontSize: 32, marginBottom: 0 }}>🎫</div>
+            <div className="login-logo-title" style={{ marginBottom: 0 }}>Ticketing System</div>
+          </div>
           <div className="login-logo-sub">Corporate Event Ticketing System</div>
         </div>
         <div className="login-card">

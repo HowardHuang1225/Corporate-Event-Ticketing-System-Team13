@@ -353,9 +353,9 @@ tbody tr:hover td { background: var(--bg-card-hover); }
   padding: 24px;
 }
 .login-logo { text-align: center; margin-bottom: 32px; }
-.login-logo-icon { font-size: 48px; margin-bottom: 12px; }
+.login-logo-icon { font-size: 32px; }
 .login-logo-title { font-size: 22px; font-weight: 700; }
-.login-logo-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.login-logo-sub { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
 .login-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 32px; backdrop-filter: blur(12px); }
 .login-error { background: var(--danger-light); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--danger); font-size: 13px; margin-bottom: 16px; }
 
