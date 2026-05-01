@@ -49,7 +49,6 @@ export default function Reports() {
 
   const handleExportDetail = () => {
     if (!stats) return
-    const headers = ["指標", "數值"]
     const rows = [
       ["活動標題", stats.event.title],
       ["總申請數", stats.total_applied],

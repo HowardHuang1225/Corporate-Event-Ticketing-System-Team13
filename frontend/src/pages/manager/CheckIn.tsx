@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ScanLine, History } from 'lucide-react'
-import toast from 'react-hot-toast'
 import api from '../../api/client'
 
 export default function CheckIn() {

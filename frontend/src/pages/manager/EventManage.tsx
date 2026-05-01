@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Eye, CheckCircle, XCircle, Globe } from 'lucide-react'
+import { Plus, XCircle, Globe } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
-import { useAuth } from '../../contexts/AuthContext'
 
 type EventStatus = 'draft' | 'published' | 'closed' | 'ended'
 function StatusBadge({ status }: { status: EventStatus }) {
@@ -19,7 +18,6 @@ const EMPTY_FORM = {
 }
 
 export default function EventManage() {
-  const { user } = useAuth()
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
