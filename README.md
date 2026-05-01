@@ -7,7 +7,10 @@
 這是最推薦的啟動方式，會自動建立並運行所有服務（前端、後端、資料庫、快取、監控）。
 
 ```bash
-# 在專案根目錄執行
+# 1. 準備環境變數
+cp .env.example .env
+
+# 2. 啟動服務
 docker-compose up --build
 ```
 
@@ -16,6 +19,20 @@ docker-compose up --build
 - **前端網頁**: [http://localhost:8080](http://localhost:8080)
 - **後端 API**: [http://localhost:8001](http://localhost:8001)
 - **Grafana 監控**: [http://localhost:3001](http://localhost:3001) (預設帳密: `admin` / `admin`)
+
+---
+
+## 環境設定 (Configuration)
+
+本專案採用 12-Factor App 原則管理配置：
+
+- **.env**: 儲存開發環境的變數（如 `JWT_SECRET`、資料庫帳密）。
+- **Docker Compose**: 自動讀取根目錄的 `.env` 並注入容器。
+- **Go Backend**: 啟動時會透過 `godotenv` 載入 `.env`，支援本地直接執行與 Docker 環境。
+
+**設定步驟：**
+1. 複製範本：`cp .env.example .env`
+2. 根據需求修改 `.env` 內容（例如修改 `JWT_SECRET`）。
 
 ---
 

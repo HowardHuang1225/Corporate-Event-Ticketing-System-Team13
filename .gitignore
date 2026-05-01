@@ -1,2 +1,15 @@
-#ignore all node_modules
+# Environment files
+.env
+.env.local
+
+# Build artifacts
+dist/
+bin/
+
+# Dependencies
 node_modules/
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db

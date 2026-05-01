@@ -21,10 +21,15 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/joho/godotenv"
 	"gorm.io/gorm"
 )
 
 func main() {
+	// Load .env file from root or current directory
+	// It's okay if it fails (e.g. in production/docker where env vars are already set)
+	godotenv.Load(".env", "../.env")
+
 	cfg := config.Load()
 	db := database.Connect(cfg.DatabaseURL)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
@@ -121,10 +126,10 @@ func seedData(db *gorm.DB) {
 	var count int64
 	db.Model(&model.User{}).Count(&count)
 	if count > 0 {
-		log.Println("✅ Seed data already exists")
+		log.Println("Seed data already exists")
 		return
 	}
-	log.Println("🌱 Seeding demo data...")
+	log.Println("Seeding demo data...")
 
 	hash := func(pw string) string {
 		b, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
@@ -189,7 +194,7 @@ func seedData(db *gorm.DB) {
 		}
 	}
 
-	fmt.Println("✅ Seed complete!")
+	fmt.Println("Seed complete!")
 	fmt.Println("   MGR001 / password  → event_manager")
 	fmt.Println("   EMP001 / password  → employee (台南廠)")
 	fmt.Println("   EMP002 / password  → employee (新竹廠)")

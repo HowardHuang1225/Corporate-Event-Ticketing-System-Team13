@@ -9,15 +9,15 @@ services:
     container_name: ts_postgres
     restart: always
     environment:
-      POSTGRES_USER: ts_user
-      POSTGRES_PASSWORD: ts_password
-      POSTGRES_DB: ticketing_system
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ts_user -d ticketing_system"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,7 +27,7 @@ services:
     container_name: ts_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -64,13 +64,13 @@ services:
     container_name: ts_backend
     restart: always
     ports:
-      - "8001:8001"
+      - "${PORT}:${PORT}"
     environment:
-      - DATABASE_URL=host=postgres user=ts_user password=ts_password dbname=ticketing_system port=5432 sslmode=disable
+      - DATABASE_URL=host=postgres user=${DB_USER} password=${DB_PASSWORD} dbname=${DB_NAME} port=5432 sslmode=disable
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=dev-jwt-secret-change-in-prod-32chars!!
-      - PORT=8001
-      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8080
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=${PORT}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
     depends_on:
       postgres:
         condition: service_healthy
