@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
 	"ticketing-system/backend/config"
@@ -28,7 +33,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowOrigins:     strings.Split(cfg.AllowedOrigins, ","),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -79,9 +84,37 @@ func main() {
 	api.GET("/reports/overview", middleware.RequireRole("hr"), reportH.AllEventsOverview)
 
 	fmt.Printf("🚀 Server running on :%s\n", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
-		log.Fatal(err)
+	// Create HTTP Server
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: r,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	log.Printf("Server started on port %s", cfg.Port)
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// The context is used to inform the server it has 5 seconds to finish
+	// the request it is currently handling
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Server exiting")
 }
 
 func seedData(db *gorm.DB) {

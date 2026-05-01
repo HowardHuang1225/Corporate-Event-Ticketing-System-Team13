@@ -40,21 +40,53 @@ services:
   # ==========================================
   # Monitoring Tools (Prometheus + Grafana)
   # ==========================================
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: ts_prometheus
-    ports:
-      - "9090:9090"
-    # volumes:
-    #   - ./k8s/prometheus.yml:/etc/prometheus/prometheus.yml
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: ts_prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   # volumes:
+  #   #   - ./k8s/prometheus.yml:/etc/prometheus/prometheus.yml
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: ts_grafana
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: ts_grafana
+  #   ports:
+  #     - "3001:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+
+  # ==========================================
+  # Application Services
+  # ==========================================
+  backend:
+    build: ./backend
+    container_name: ts_backend
+    restart: always
     ports:
-      - "3001:3000"
+      - "8001:8001"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - DATABASE_URL=host=postgres user=ts_user password=ts_password dbname=ticketing_system port=5432 sslmode=disable
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-jwt-secret-change-in-prod-32chars!!
+      - PORT=8001
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: ts_frontend
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - PORT=80
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
