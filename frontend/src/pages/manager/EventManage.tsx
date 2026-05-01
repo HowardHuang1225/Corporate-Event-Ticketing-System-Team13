@@ -55,6 +55,9 @@ export default function EventManage() {
   const handleCreate = () => {
     const payload = {
       ...form,
+      start_time: form.start_time ? new Date(form.start_time).toISOString() : '',
+      end_time: form.end_time ? new Date(form.end_time).toISOString() : '',
+      apply_deadline: form.apply_deadline ? new Date(form.apply_deadline).toISOString() : '',
       region_restriction: form.region_restriction || null,
       ticket_types: form.ticket_types.map(tt => ({ ...tt, total_quota: Number(tt.total_quota) })),
     }
