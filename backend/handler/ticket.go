@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -49,15 +50,12 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 		return
 	}
 
-	// ── Duplicate application check ──
-	var dup model.Application
-	if err := h.db.Where(
-		"user_id = ? AND event_id = ? AND ticket_type_id = ? AND status NOT IN ('cancelled','rejected')",
-		userID.String(), req.EventID, req.TicketTypeID,
-	).First(&dup).Error; err == nil {
-		c.JSON(http.StatusConflict, errResp("DUPLICATE_APPLICATION", "You already have an active application for this ticket type"))
-		return
-	}
+	// ── Calculate total quantity already applied for this event ──
+	var currentTotal int
+	h.db.Model(&model.Application{}).
+		Where("user_id = ? AND event_id = ? AND status NOT IN ('cancelled','rejected')", userID.String(), req.EventID).
+		Select("COALESCE(SUM(quantity), 0)").
+		Scan(&currentTotal)
 
 	// ── Fetch & validate event ──
 	var event model.Event
@@ -83,8 +81,9 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 			return
 		}
 	}
-	if req.Quantity > event.MaxTicketsPerPerson {
-		c.JSON(http.StatusBadRequest, errResp("VALIDATION_ERROR", "Quantity exceeds max tickets per person"))
+	remainingAllowance := event.MaxTicketsPerPerson - currentTotal
+	if req.Quantity > remainingAllowance {
+		c.JSON(http.StatusBadRequest, errResp("EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", currentTotal, event.MaxTicketsPerPerson, remainingAllowance)))
 		return
 	}
 
