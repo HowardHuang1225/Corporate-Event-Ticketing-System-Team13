@@ -39,23 +39,26 @@ frontend/
 
 ## 3. 核心功能說明
 
-### 角色導航 (Role-based Navigation)
-- 檔案：`components/Layout.tsx`
-- 說明：根據 `AuthContext` 提供的角色資訊，動態切換側邊欄的功能清單，並在左下角顯示使用者的 **職稱** 與 **所屬廠區**。
+### 我的票券 (My Tickets)
+- 檔案：`pages/employee/MyTickets.tsx`
+- 說明：
+  - **電子票券 (🎫)**：顯示已核准的票券與 QR Code。
+  - **單張退票**：每張票券卡片均設有「退票」按鈕。點擊後會調用後端接口，作廢票券並釋放額度。
+  - **申請紀錄 (📋)**：顯示所有申請歷史，包含「已核准」與自動產生的「退票 (Cancelled)」紀錄，提供完整的審計軌跡。
+
+### 報名流程 (Application Flow)
+- 檔案：`pages/employee/EventDetail.tsx`
+- 說明：系統會自動計算該名員工在該活動中的「剩餘額度」，允許在總限額（`MaxTicketsPerPerson`）內進行多次、多票種的申請。
 
 ### 核銷流程 (Check-in System)
 - 檔案：`pages/manager/CheckIn.tsx`
 - 說明：管理員輸入/掃描 Token 後，系統會串接後端 API 進行核銷，並同步顯示該名員工的「姓名、工號、部門、廠區」以供核對。
 
-### 時間處理 (Time Management)
-- 檔案：`pages/manager/EventManage.tsx`
-- 說明：由於 HTML `datetime-local` 格式與後端 ISO 格式不符，前端在傳送前會自動透過 `toISOString()` 進行標準化處理。
-
 ### 數據報表 (HR Insights)
 - 檔案：`pages/hr/Reports.tsx`
-- 說明：整合了各部門與各廠區的報名數據，並提供 **CSV 匯出** 功能供 HR 下載存檔。
+- 說明：整合了各部門與各廠區的報名數據（含退票統計），並提供 **CSV 匯出** 功能。
 
 ## 4. 部署特性
 - **Dynamic Port**: Nginx 配置支援透過 `${PORT}` 環境變數動態綁定埠號。
-- **CORS-free**: 在 Docker 部署中，所有請求皆透過 Nginx 內部的 `/v1` 轉發，避免跨域連線問題。
+- **CORS-free**: 在 Docker 部署中，所有請求皆透過 Nginx 內部的 `/v1` 轉發。
 - **SPA Routing**: Nginx 已配置 `try_files` 以確保 React Router 的路由刷新後不會失效。
