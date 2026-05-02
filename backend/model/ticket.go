@@ -44,6 +44,7 @@ type Ticket struct {
 	IsUsed        bool        `gorm:"default:false"                   json:"is_used"`
 	IssuedAt      time.Time   `gorm:"not null;autoCreateTime"         json:"issued_at"`
 	ExpiresAt     time.Time   `gorm:"not null"                        json:"expires_at"`
+	Application   Application `gorm:"foreignKey:ApplicationID"         json:"application,omitempty"`
 	Event         Event       `gorm:"foreignKey:EventID"              json:"event,omitempty"`
 	TicketType    TicketType  `gorm:"foreignKey:TicketTypeID"         json:"ticket_type,omitempty"`
 }

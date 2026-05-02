@@ -50,12 +50,20 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 		return
 	}
 
-	// ── Calculate total quantity already applied for this event ──
-	var currentTotal int
+	// ── Calculate net quantity already applied for this event ──
+	var activeTotal int
 	h.db.Model(&model.Application{}).
-		Where("user_id = ? AND event_id = ? AND status NOT IN ('cancelled','rejected')", userID.String(), req.EventID).
+		Where("user_id = ? AND event_id = ? AND status IN ('pending', 'approved')", userID.String(), req.EventID).
 		Select("COALESCE(SUM(quantity), 0)").
-		Scan(&currentTotal)
+		Scan(&activeTotal)
+
+	var refundedTotal int
+	h.db.Model(&model.Application{}).
+		Where("user_id = ? AND event_id = ? AND status = 'cancelled' AND reason LIKE '退票%'", userID.String(), req.EventID).
+		Select("COALESCE(SUM(quantity), 0)").
+		Scan(&refundedTotal)
+
+	currentTotal := activeTotal - refundedTotal
 
 	// ── Fetch & validate event ──
 	var event model.Event
@@ -274,6 +282,104 @@ func (h *TicketHandler) MyTickets(c *gin.Context) {
 		Order("issued_at desc").
 		Find(&tickets)
 	c.JSON(http.StatusOK, okResp(tickets))
+}
+
+// ── POST /v1/applications/:id/cancel ──
+func (h *TicketHandler) CancelApplication(c *gin.Context) {
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	appID := c.Param("id")
+
+	var app model.Application
+	if err := h.db.First(&app, "id = ? AND user_id = ?", appID, userID.String()).Error; err != nil {
+		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Application not found"))
+		return
+	}
+
+	if app.Status == "cancelled" || app.Status == "rejected" {
+		c.JSON(http.StatusConflict, errResp("INVALID_STATUS", "Application is already cancelled or rejected"))
+		return
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Update application status
+		if err := tx.Model(&app).Update("status", "cancelled").Error; err != nil {
+			return err
+		}
+
+		// 2. Return tickets to pool
+		if err := tx.Model(&model.TicketType{}).Where("id = ?", app.TicketTypeID).
+			Updates(map[string]interface{}{
+				"remaining": gorm.Expr("remaining + ?", app.Quantity),
+				"version":   gorm.Expr("version + 1"),
+			}).Error; err != nil {
+			return err
+		}
+
+		// 3. Delete/Invalidate tickets if already issued
+		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Ticket{}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Failed to cancel application"))
+		return
+	}
+
+	c.JSON(http.StatusOK, okResp(gin.H{"message": "Application cancelled and tickets returned to pool"}))
+}
+
+// ── POST /v1/tickets/:id/cancel ──
+func (h *TicketHandler) CancelTicket(c *gin.Context) {
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	ticketID := c.Param("id")
+
+	var ticket model.Ticket
+	if err := h.db.Preload("Application").First(&ticket, "id = ? AND user_id = ?", ticketID, userID.String()).Error; err != nil {
+		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Ticket not found"))
+		return
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Return 1 ticket to pool
+		if err := tx.Model(&model.TicketType{}).Where("id = ?", ticket.TicketTypeID).
+			Updates(map[string]interface{}{
+				"remaining": gorm.Expr("remaining + 1"),
+				"version":   gorm.Expr("version + 1"),
+			}).Error; err != nil {
+			return err
+		}
+
+		// 2. Create a NEW application record for the return (audit trail)
+		refundApp := model.Application{
+			UserID:         ticket.UserID,
+			EventID:        ticket.EventID,
+			TicketTypeID:   ticket.TicketTypeID,
+			Quantity:       1,
+			Status:         "cancelled",
+			IdempotencyKey: "refund-" + ticket.ID.String(),
+			Reason:         pkg.Ptr("退票 (原票號: " + ticket.ID.String()[:8] + ")"),
+		}
+		if err := tx.Create(&refundApp).Error; err != nil {
+			return err
+		}
+
+		// 3. Delete the ticket
+		if err := tx.Delete(&ticket).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Failed to return ticket"))
+		return
+	}
+
+	c.JSON(http.StatusOK, okResp(gin.H{"message": "Ticket returned successfully"}))
 }
 
 // ── POST /v1/checkin  (Manager) ──
