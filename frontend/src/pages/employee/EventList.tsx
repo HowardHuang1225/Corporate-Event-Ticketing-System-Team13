@@ -24,6 +24,7 @@ export default function EventList() {
   const { data, isLoading } = useQuery({
     queryKey: ['events', statusFilter],
     queryFn: () => api.get('/events', { params: statusFilter ? { status: statusFilter } : {} }).then(r => r.data.data),
+    refetchInterval: 30000, // 列表頁每 30 秒更新一次即可
   })
 
   if (isLoading) return <div className="empty-state"><div className="spinner" /></div>
