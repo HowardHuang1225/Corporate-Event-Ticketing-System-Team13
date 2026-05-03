@@ -34,6 +34,15 @@ func (e *Event) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AfterFind 會在從資料庫讀取資料後執行
+// 如果活動狀態為 'published' 但截止時間已過，自動將狀態視為 'closed'
+func (e *Event) AfterFind(tx *gorm.DB) (err error) {
+	if e.Status == "published" && !e.ApplyDeadline.IsZero() && time.Now().After(e.ApplyDeadline) {
+		e.Status = "closed"
+	}
+	return nil
+}
+
 type TicketType struct {
 	ID         uuid.UUID `gorm:"type:varchar(36);primaryKey"  json:"id"`
 	EventID    uuid.UUID `gorm:"type:varchar(36);not null;index" json:"event_id"`

@@ -24,6 +24,7 @@ export default function EventDetail() {
   const { data, isLoading } = useQuery({
     queryKey: ['event', id],
     queryFn: () => api.get(`/events/${id}`).then(r => r.data.data),
+    refetchInterval: 10000, // 每 10 秒自動重新抓取一次
   })
 
   const applyMutation = useMutation({
