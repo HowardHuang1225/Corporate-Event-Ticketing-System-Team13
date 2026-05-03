@@ -101,7 +101,7 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 	lockKey := "ticket_type:" + req.TicketTypeID
 	ctx := context.Background()
 
-	acquired, err := pkg.AcquireLock(ctx, h.redis, lockKey, 10*time.Second)
+	acquired, err := pkg.AcquireLock(ctx, h.redis, lockKey, 10*time.Second, 3*time.Second)
 	if err != nil || !acquired {
 		c.JSON(http.StatusServiceUnavailable, errResp("BUSY", "System is busy, please retry"))
 		return
