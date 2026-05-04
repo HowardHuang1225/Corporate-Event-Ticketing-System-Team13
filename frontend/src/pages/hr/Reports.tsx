@@ -69,7 +69,6 @@ export default function Reports() {
       ["", ""],
       ["【核銷階段】", ""],
       ["核銷張數", String(stats.checked_in_tickets)],
-      ["核銷人數", String(stats.checked_in_users)],
       ["核銷率", `${Math.round(stats.check_in_rate)}%`],
       ["", ""],
       ["部門分佈", "人數"],
@@ -201,7 +200,6 @@ export default function Reports() {
           <div className="stats-grid" style={{ marginBottom: 24 }}>
             {[
               { icon: <BarChart3 size={20} />, label: '實體核銷張數', value: stats.checked_in_tickets, color: 'var(--accent)' },
-              { icon: <Users size={20} />, label: '實際到場人數', value: stats.checked_in_users, color: 'var(--accent)' },
               { icon: <CheckSquare size={20} />, label: '核銷率 (基於有效票)', value: `${Math.round(stats.check_in_rate)}%`, color: 'var(--warning)' },
             ].map(s => (
               <div key={s.label} className="stat-card">
