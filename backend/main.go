@@ -55,7 +55,7 @@ func main() {
 	})
 
 	authH := handler.NewAuthHandler(db, cfg.JWTSecret)
-	eventH := handler.NewEventHandler(db)
+	eventH := handler.NewEventHandler(db, redisClient)
 	ticketH := handler.NewTicketHandler(db, redisClient)
 	reportH := handler.NewReportHandler(db)
 

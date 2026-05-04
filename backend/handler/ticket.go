@@ -59,13 +59,14 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 	inventoryKey := "inventory:" + req.TicketTypeID
 	ctx := context.Background()
 
-	// Ensure Redis has the inventory count (Lazy loading)
-	if h.redis.Exists(ctx, inventoryKey).Val() == 0 {
-		// Use a temporary lock to prevent race during init
+	// Ensure Redis has the inventory count (Lazy loading with safety check)
+	// We use a separate flag to ensure the inventory was properly loaded from DB
+	loadedKey := "inventory_loaded:" + req.TicketTypeID
+	if h.redis.Exists(ctx, loadedKey).Val() == 0 {
 		lockKey := "init_lock:" + req.TicketTypeID
 		if ok, _ := pkg.AcquireLock(ctx, h.redis, lockKey, 5*time.Second, 60*time.Second); ok {
 			// Re-check after acquiring lock
-			if h.redis.Exists(ctx, inventoryKey).Val() == 0 {
+			if h.redis.Exists(ctx, loadedKey).Val() == 0 {
 				var tt model.TicketType
 				if err := h.db.First(&tt, "id = ?", ticketTypeID).Error; err != nil {
 					if err == gorm.ErrRecordNotFound {
@@ -76,7 +77,13 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 					pkg.ReleaseLock(ctx, h.redis, lockKey)
 					return
 				}
-				h.redis.Set(ctx, inventoryKey, tt.Remaining, 24*time.Hour)
+				// Atomic initialization
+				pipe := h.redis.TxPipeline()
+				pipe.Set(ctx, inventoryKey, tt.Remaining, 24*time.Hour)
+				pipe.Set(ctx, loadedKey, "1", 24*time.Hour)
+				if _, err := pipe.Exec(ctx); err != nil {
+					log.Printf("Redis init error: %v", err)
+				}
 			}
 			pkg.ReleaseLock(ctx, h.redis, lockKey)
 		}
@@ -160,30 +167,29 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 				}
 			}
 
-			var activeTotal int
-			if err := tx.Model(&model.Application{}).
-				Where("user_id = ? AND event_id = ? AND status IN ('pending', 'approved')", userID.String(), eventID.String()).
-				Select("COALESCE(SUM(quantity), 0)").
-				Scan(&activeTotal).Error; err != nil {
+			var issuedCount int64
+			if err := tx.Model(&model.Ticket{}).
+				Where("user_id = ? AND event_id = ?", userID.String(), eventID.String()).
+				Count(&issuedCount).Error; err != nil {
 				return err
 			}
 
-			var refundedTotal int
+			var pendingCount int
 			if err := tx.Model(&model.Application{}).
-				Where("user_id = ? AND event_id = ? AND status = 'cancelled' AND reason LIKE '退票%'", userID.String(), eventID.String()).
+				Where("user_id = ? AND event_id = ? AND status = 'pending'", userID.String(), eventID.String()).
 				Select("COALESCE(SUM(quantity), 0)").
-				Scan(&refundedTotal).Error; err != nil {
+				Scan(&pendingCount).Error; err != nil {
 				return err
 			}
 
-			currentTotal := activeTotal - refundedTotal
+			currentTotal := int(issuedCount) + pendingCount
 			remainingAllowance := event.MaxTicketsPerPerson - currentTotal
 			if req.Quantity > remainingAllowance {
 				return cErr(http.StatusBadRequest, "EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", currentTotal, event.MaxTicketsPerPerson, remainingAllowance))
 			}
 
 			res := tx.Model(&model.TicketType{}).
-				Where("id = ? AND remaining >= ?", ticketTypeID, req.Quantity).
+				Where("id = ? AND event_id = ? AND remaining >= ?", ticketTypeID, eventID, req.Quantity).
 				Updates(map[string]interface{}{
 					"remaining": gorm.Expr("remaining - ?", req.Quantity),
 					"version":   gorm.Expr("version + 1"),
@@ -228,11 +234,15 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 
 			createdApp = app
 			created = true
-			success = true
 			return nil
 		})
 
-		if err == nil || !isRetryableApplyError(err) {
+		if err == nil {
+			if created {
+				success = true
+			}
+			break
+		} else if !isRetryableApplyError(err) {
 			break
 		}
 		log.Printf("⚠️  DB Conflict, retrying... (attempt %d/5): %v", attempt+1, err)
@@ -328,13 +338,22 @@ func (h *TicketHandler) ApproveApplication(c *gin.Context) {
 
 	now := time.Now()
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&app).Updates(map[string]interface{}{
-			"status":      "approved",
-			"reviewed_by": reviewerID,
-			"reviewed_at": now,
-		}).Error; err != nil {
-			return err
+		// Use a WHERE clause to ensure we only update if it's still pending
+		res := tx.Model(&model.Application{}).
+			Where("id = ? AND status = 'pending'", app.ID).
+			Updates(map[string]interface{}{
+				"status":      "approved",
+				"reviewed_by": reviewerID,
+				"reviewed_at": now,
+			})
+
+		if res.Error != nil {
+			return res.Error
 		}
+		if res.RowsAffected == 0 {
+			return cErr(http.StatusConflict, "ALREADY_PROCESSED", "Application has already been approved or rejected")
+		}
+
 		for i := 0; i < app.Quantity; i++ {
 			t := model.Ticket{
 				ApplicationID: app.ID,
@@ -382,13 +401,20 @@ func (h *TicketHandler) RejectApplication(c *gin.Context) {
 
 	now := time.Now()
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&app).Updates(map[string]interface{}{
-			"status":      "rejected",
-			"reason":      req.Reason,
-			"reviewed_by": reviewerID,
-			"reviewed_at": now,
-		}).Error; err != nil {
-			return err
+		res := tx.Model(&model.Application{}).
+			Where("id = ? AND status = 'pending'", app.ID).
+			Updates(map[string]interface{}{
+				"status":      "rejected",
+				"reason":      req.Reason,
+				"reviewed_by": reviewerID,
+				"reviewed_at": now,
+			})
+
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return cErr(http.StatusConflict, "ALREADY_PROCESSED", "Application has already been approved or rejected")
 		}
 
 		// Return inventory to DB
@@ -440,6 +466,16 @@ func (h *TicketHandler) CancelApplication(c *gin.Context) {
 		return
 	}
 
+	// If already approved, check if any tickets have been used
+	if app.Status == "approved" {
+		var usedCount int64
+		h.db.Model(&model.Ticket{}).Where("application_id = ? AND is_used = true", app.ID).Count(&usedCount)
+		if usedCount > 0 {
+			c.JSON(http.StatusConflict, errResp("TICKETS_ALREADY_USED", "Cannot cancel application because some tickets have already been used. Please return unused tickets individually."))
+			return
+		}
+	}
+
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&app).Update("status", "cancelled").Error; err != nil {
 			return err
@@ -482,6 +518,11 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 	var ticket model.Ticket
 	if err := h.db.Preload("Application").First(&ticket, "id = ? AND user_id = ?", ticketID, userID.String()).Error; err != nil {
 		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Ticket not found"))
+		return
+	}
+
+	if ticket.IsUsed {
+		c.JSON(http.StatusConflict, errResp("ALREADY_USED", "Cannot return a ticket that has already been used"))
 		return
 	}
 
@@ -541,31 +582,55 @@ func (h *TicketHandler) Checkin(c *gin.Context) {
 	}
 	checkerID, _ := uuid.Parse(c.GetString("user_id"))
 
-	result := h.db.Model(&model.Ticket{}).
-		Where("qr_token = ? AND is_used = false", req.QRToken).
-		Update("is_used", true)
-
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "DB error"))
-		return
-	}
-
-	if result.RowsAffected == 0 {
-		var count int64
-		h.db.Model(&model.Ticket{}).Where("qr_token = ?", req.QRToken).Count(&count)
-		if count == 0 {
-			c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Ticket not found"))
-		} else {
-			c.JSON(http.StatusConflict, errResp("ALREADY_CHECKED_IN", "This ticket has already been used"))
-		}
-		return
-	}
-
 	var ticket model.Ticket
-	h.db.Preload("Event").Preload("TicketType").Preload("User").First(&ticket, "qr_token = ?", req.QRToken)
+	now := time.Now()
 
-	checkin := model.Checkin{TicketID: ticket.ID, CheckedBy: checkerID}
-	h.db.Create(&checkin)
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Atomically update ticket status
+		res := tx.Model(&model.Ticket{}).
+			Where("qr_token = ? AND is_used = false AND expires_at > ?", req.QRToken, now).
+			Update("is_used", true)
+
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// If update failed, we need to find out why to return a good error
+			if err := tx.Where("qr_token = ?", req.QRToken).First(&ticket).Error; err != nil {
+				return cErr(http.StatusNotFound, "NOT_FOUND", "Ticket not found")
+			}
+			if ticket.IsUsed {
+				return cErr(http.StatusConflict, "ALREADY_CHECKED_IN", "This ticket has already been used")
+			}
+			if now.After(ticket.ExpiresAt) {
+				return cErr(http.StatusGone, "TICKET_EXPIRED", "This ticket has expired")
+			}
+			return cErr(http.StatusBadRequest, "INVALID_REQUEST", "Ticket is invalid")
+		}
+
+		// 2. Fetch full ticket info for record and response
+		if err := tx.Preload("Event").Preload("TicketType").Preload("User").
+			First(&ticket, "qr_token = ?", req.QRToken).Error; err != nil {
+			return err
+		}
+
+		// 3. Create check-in record
+		checkin := model.Checkin{TicketID: ticket.ID, CheckedBy: checkerID}
+		if err := tx.Create(&checkin).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		if ce, ok := err.(*clientError); ok {
+			c.JSON(ce.status, errResp(ce.code, ce.message))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Check-in failed: "+err.Error()))
+		return
+	}
 
 	c.JSON(http.StatusOK, okResp(gin.H{
 		"message": "Check-in successful!",
@@ -578,7 +643,7 @@ func (h *TicketHandler) Checkin(c *gin.Context) {
 // ────────────────────────────────────────────────────────────
 func (h *TicketHandler) ListCheckins(c *gin.Context) {
 	var checkins []model.Checkin
-	q := h.db.Preload("Ticket.Event").Preload("Checker")
+	q := h.db.Preload("Ticket.Event").Preload("Ticket.TicketType").Preload("Ticket.User").Preload("Checker")
 	if eid := c.Query("event_id"); eid != "" {
 		q = q.Joins("JOIN tickets ON checkins.ticket_id = tickets.id").
 			Where("tickets.event_id = ?", eid)
