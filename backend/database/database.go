@@ -29,6 +29,10 @@ func Connect(dsn string) *gorm.DB {
 		log.Fatalf("❌ AutoMigrate failed: %v", err)
 	}
 
-	log.Println("✅ Database connected and migrated")
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxIdleConns(50)
+	sqlDB.SetMaxOpenConns(200)
+
+	log.Println("✅ Database connected and migrated with optimized pool")
 	return db
 }

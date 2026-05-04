@@ -47,6 +47,7 @@ type Ticket struct {
 	Application   Application `gorm:"foreignKey:ApplicationID"         json:"application,omitempty"`
 	Event         Event       `gorm:"foreignKey:EventID"              json:"event,omitempty"`
 	TicketType    TicketType  `gorm:"foreignKey:TicketTypeID"         json:"ticket_type,omitempty"`
+	User          User        `gorm:"foreignKey:UserID"               json:"user,omitempty"`
 }
 
 func (t *Ticket) BeforeCreate(tx *gorm.DB) error {

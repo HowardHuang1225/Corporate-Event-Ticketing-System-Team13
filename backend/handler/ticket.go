@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -11,8 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type TicketHandler struct {
@@ -24,9 +28,6 @@ func NewTicketHandler(db *gorm.DB, redis *redis.Client) *TicketHandler {
 	return &TicketHandler{db: db, redis: redis}
 }
 
-// ────────────────────────────────────────────────────────────
-// POST /v1/applications   Apply for ticket (EMPLOYEE)
-// ────────────────────────────────────────────────────────────
 type ApplyRequest struct {
 	EventID        string `json:"event_id" binding:"required"`
 	TicketTypeID   string `json:"ticket_type_id" binding:"required"`
@@ -34,6 +35,9 @@ type ApplyRequest struct {
 	IdempotencyKey string `json:"idempotency_key" binding:"required"`
 }
 
+// ────────────────────────────────────────────────────────────
+// POST /v1/applications   Apply for ticket (EMPLOYEE)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) Apply(c *gin.Context) {
 	var req ApplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -42,127 +46,245 @@ func (h *TicketHandler) Apply(c *gin.Context) {
 	}
 
 	userID, _ := uuid.Parse(c.GetString("user_id"))
+	eventID, _ := uuid.Parse(req.EventID)
+	ticketTypeID, _ := uuid.Parse(req.TicketTypeID)
 
-	// ── Idempotency check ──
 	var existing model.Application
 	if err := h.db.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).First(&existing).Error; err == nil {
 		c.JSON(http.StatusOK, okResp(existing))
 		return
 	}
 
-	// ── Calculate net quantity already applied for this event ──
-	var activeTotal int
-	h.db.Model(&model.Application{}).
-		Where("user_id = ? AND event_id = ? AND status IN ('pending', 'approved')", userID.String(), req.EventID).
-		Select("COALESCE(SUM(quantity), 0)").
-		Scan(&activeTotal)
-
-	var refundedTotal int
-	h.db.Model(&model.Application{}).
-		Where("user_id = ? AND event_id = ? AND status = 'cancelled' AND reason LIKE '退票%'", userID.String(), req.EventID).
-		Select("COALESCE(SUM(quantity), 0)").
-		Scan(&refundedTotal)
-
-	currentTotal := activeTotal - refundedTotal
-
-	// ── Fetch & validate event ──
-	var event model.Event
-	if err := h.db.First(&event, "id = ?", req.EventID).Error; err != nil {
-		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Event not found"))
-		return
-	}
-	if event.Status != "published" {
-		c.JSON(http.StatusBadRequest, errResp("EVENT_NOT_AVAILABLE", "Event is not accepting applications"))
-		return
-	}
-	if time.Now().After(event.ApplyDeadline) {
-		c.JSON(http.StatusBadRequest, errResp("APPLY_DEADLINE_PASSED", "Application deadline has passed"))
-		return
-	}
-
-	// ── Region restriction check ──
-	if event.RegionRestriction != nil && *event.RegionRestriction != "" {
-		var user model.User
-		h.db.First(&user, "id = ?", userID.String())
-		if user.Region != *event.RegionRestriction {
-			c.JSON(http.StatusForbidden, errResp("NOT_ELIGIBLE", "You are not eligible due to region restriction (restricted to "+*event.RegionRestriction+")"))
-			return
-		}
-	}
-	remainingAllowance := event.MaxTicketsPerPerson - currentTotal
-	if req.Quantity > remainingAllowance {
-		c.JSON(http.StatusBadRequest, errResp("EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", currentTotal, event.MaxTicketsPerPerson, remainingAllowance)))
-		return
-	}
-
-	// ════════════════════════════════════════════════════════
-	// ANTI-OVERSELL: Redis distributed lock + Optimistic lock
-	// ════════════════════════════════════════════════════════
-	lockKey := "ticket_type:" + req.TicketTypeID
+	// 1. Redis Pre-decrement for inventory
+	inventoryKey := "inventory:" + req.TicketTypeID
 	ctx := context.Background()
 
-	acquired, err := pkg.AcquireLock(ctx, h.redis, lockKey, 10*time.Second, 3*time.Second)
-	if err != nil || !acquired {
-		c.JSON(http.StatusServiceUnavailable, errResp("BUSY", "System is busy, please retry"))
-		return
+	// Ensure Redis has the inventory count (Lazy loading)
+	if h.redis.Exists(ctx, inventoryKey).Val() == 0 {
+		// Use a temporary lock to prevent race during init
+		lockKey := "init_lock:" + req.TicketTypeID
+		if ok, _ := pkg.AcquireLock(ctx, h.redis, lockKey, 5*time.Second, 60*time.Second); ok {
+			// Re-check after acquiring lock
+			if h.redis.Exists(ctx, inventoryKey).Val() == 0 {
+				var tt model.TicketType
+				if err := h.db.First(&tt, "id = ?", ticketTypeID).Error; err != nil {
+					if err == gorm.ErrRecordNotFound {
+						c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Ticket type not found"))
+					} else {
+						c.JSON(http.StatusInternalServerError, errResp("DB_ERROR", "Database system busy"))
+					}
+					pkg.ReleaseLock(ctx, h.redis, lockKey)
+					return
+				}
+				h.redis.Set(ctx, inventoryKey, tt.Remaining, 24*time.Hour)
+			}
+			pkg.ReleaseLock(ctx, h.redis, lockKey)
+		}
 	}
-	defer pkg.ReleaseLock(ctx, h.redis, lockKey)
 
-	eventID, _ := uuid.Parse(req.EventID)
-	ticketTypeID, _ := uuid.Parse(req.TicketTypeID)
-
-	for attempt := 0; attempt < 3; attempt++ {
-		var tt model.TicketType
-		if err := h.db.First(&tt, "id = ?", ticketTypeID).Error; err != nil {
-			c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Ticket type not found"))
-			return
-		}
-		if tt.Remaining < req.Quantity {
-			c.JSON(http.StatusConflict, errResp("TICKET_SOLD_OUT", "Not enough tickets remaining"))
-			return
-		}
-
-		// CAS update with version check
-		result := h.db.Model(&model.TicketType{}).
-			Where("id = ? AND version = ? AND remaining >= ?", tt.ID, tt.Version, req.Quantity).
-			Updates(map[string]interface{}{
-				"remaining": gorm.Expr("remaining - ?", req.Quantity),
-				"version":   gorm.Expr("version + 1"),
-			})
-		if result.Error != nil {
-			c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "DB error"))
-			return
-		}
-		if result.RowsAffected == 0 {
-			continue // concurrent update, retry
-		}
-
-		app := model.Application{
-			UserID:         userID,
-			EventID:        eventID,
-			TicketTypeID:   ticketTypeID,
-			Quantity:       req.Quantity,
-			Status:         "pending",
-			IdempotencyKey: req.IdempotencyKey,
-		}
-		if err := h.db.Create(&app).Error; err != nil {
-			// Rollback reservation
-			h.db.Model(&model.TicketType{}).Where("id = ?", tt.ID).Updates(map[string]interface{}{
-				"remaining": gorm.Expr("remaining + ?", req.Quantity),
-				"version":   gorm.Expr("version + 1"),
-			})
-			c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Failed to create application"))
-			return
-		}
-
-		c.JSON(http.StatusCreated, okResp(app))
+	// Atomic decrement in Redis
+	newStock, err := h.redis.DecrBy(ctx, inventoryKey, int64(req.Quantity)).Result()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, errResp("BUSY", "Inventory system busy"))
 		return
 	}
 
-	c.JSON(http.StatusConflict, errResp("CONFLICT", "Too many concurrent requests, please retry"))
+	// 2. Check if we went below zero
+	if newStock < 0 {
+		h.redis.IncrBy(ctx, inventoryKey, int64(req.Quantity)) // Compensate
+
+		// Double check idempotency before returning SOLD_OUT (with a small retry loop for DB lag)
+		for checkAttempt := 0; checkAttempt < 3; checkAttempt++ {
+			var existing model.Application
+			if err := h.db.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).First(&existing).Error; err == nil {
+				c.JSON(http.StatusOK, okResp(existing))
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		c.JSON(http.StatusConflict, errResp("TICKET_SOLD_OUT", "Not enough tickets remaining"))
+		return
+	}
+
+	var createdApp model.Application
+	var existingApp model.Application
+	created := false
+
+	// Cleanup on DB failure or idempotent retry
+	success := false
+	defer func() {
+		if !success {
+			h.redis.IncrBy(ctx, inventoryKey, int64(req.Quantity))
+		}
+	}()
+
+	for attempt := 0; attempt < 5; attempt++ {
+		created = false
+		createdApp = model.Application{}
+		existingApp = model.Application{}
+
+		err = h.db.Transaction(func(tx *gorm.DB) error {
+			lockName := fmt.Sprintf("apply:%s:%s", userID.String(), eventID.String())
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockName).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).First(&existingApp).Error; err == nil {
+				return nil
+			} else if err != gorm.ErrRecordNotFound {
+				return err
+			}
+
+			var event model.Event
+			if err := tx.First(&event, "id = ?", eventID).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return cErr(http.StatusNotFound, "NOT_FOUND", "Event not found")
+				}
+				return err
+			}
+			if event.Status != "published" {
+				return cErr(http.StatusBadRequest, "EVENT_NOT_AVAILABLE", "Event is not accepting applications")
+			}
+			if time.Now().After(event.ApplyDeadline) {
+				return cErr(http.StatusBadRequest, "APPLY_DEADLINE_PASSED", "Application deadline has passed")
+			}
+
+			if event.RegionRestriction != nil && *event.RegionRestriction != "" {
+				var user model.User
+				if err := tx.First(&user, "id = ?", userID.String()).Error; err != nil {
+					return err
+				}
+				if user.Region != *event.RegionRestriction {
+					return cErr(http.StatusForbidden, "NOT_ELIGIBLE", "You are not eligible due to region restriction (restricted to "+*event.RegionRestriction+")")
+				}
+			}
+
+			var activeTotal int
+			if err := tx.Model(&model.Application{}).
+				Where("user_id = ? AND event_id = ? AND status IN ('pending', 'approved')", userID.String(), eventID.String()).
+				Select("COALESCE(SUM(quantity), 0)").
+				Scan(&activeTotal).Error; err != nil {
+				return err
+			}
+
+			var refundedTotal int
+			if err := tx.Model(&model.Application{}).
+				Where("user_id = ? AND event_id = ? AND status = 'cancelled' AND reason LIKE '退票%'", userID.String(), eventID.String()).
+				Select("COALESCE(SUM(quantity), 0)").
+				Scan(&refundedTotal).Error; err != nil {
+				return err
+			}
+
+			currentTotal := activeTotal - refundedTotal
+			remainingAllowance := event.MaxTicketsPerPerson - currentTotal
+			if req.Quantity > remainingAllowance {
+				return cErr(http.StatusBadRequest, "EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", currentTotal, event.MaxTicketsPerPerson, remainingAllowance))
+			}
+
+			res := tx.Model(&model.TicketType{}).
+				Where("id = ? AND remaining >= ?", ticketTypeID, req.Quantity).
+				Updates(map[string]interface{}{
+					"remaining": gorm.Expr("remaining - ?", req.Quantity),
+					"version":   gorm.Expr("version + 1"),
+				})
+
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return cErr(http.StatusConflict, "TICKET_SOLD_OUT", "Not enough tickets remaining")
+			}
+
+			app := model.Application{
+				UserID:         userID,
+				EventID:        eventID,
+				TicketTypeID:   ticketTypeID,
+				Quantity:       req.Quantity,
+				Status:         "pending",
+				IdempotencyKey: req.IdempotencyKey,
+			}
+
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "idempotency_key"}},
+				DoNothing: true,
+			}).Create(&app)
+			if result.Error != nil {
+				return result.Error
+			}
+
+			if result.RowsAffected == 0 {
+				if err := tx.Model(&model.TicketType{}).Where("id = ?", ticketTypeID).Updates(map[string]interface{}{
+					"remaining": gorm.Expr("remaining + ?", req.Quantity),
+					"version":   gorm.Expr("version + 1"),
+				}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).First(&existingApp).Error; err != nil {
+					return err
+				}
+				return nil
+			}
+
+			createdApp = app
+			created = true
+			success = true
+			return nil
+		})
+
+		if err == nil || !isRetryableApplyError(err) {
+			break
+		}
+		log.Printf("⚠️  DB Conflict, retrying... (attempt %d/5): %v", attempt+1, err)
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
+
+	if err != nil {
+		if ce, ok := err.(*clientError); ok {
+			c.JSON(ce.status, errResp(ce.code, ce.message))
+			return
+		}
+		log.Printf("❌ Apply failed after retries: user=%s err=%v", userID, err)
+		c.JSON(http.StatusServiceUnavailable, errResp("BUSY", "System busy, please retry"))
+		return
+	}
+
+	if !created {
+		c.JSON(http.StatusOK, okResp(existingApp))
+		return
+	}
+
+	c.JSON(http.StatusCreated, okResp(createdApp))
 }
 
-// ── GET /v1/applications/my ──
+type clientError struct {
+	status  int
+	code    string
+	message string
+}
+
+func (e *clientError) Error() string {
+	return e.message
+}
+
+func cErr(status int, code, message string) error {
+	return &clientError{status: status, code: code, message: message}
+}
+
+func isRetryableApplyError(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "40001", "40P01", "55P03", "57014":
+			return true
+		}
+	}
+	return errors.Is(err, gorm.ErrInvalidTransaction)
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /v1/applications/my   List my applications (EMPLOYEE)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) MyApplications(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var apps []model.Application
@@ -173,7 +295,9 @@ func (h *TicketHandler) MyApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(apps))
 }
 
-// ── GET /v1/applications   (Manager) ──
+// ────────────────────────────────────────────────────────────
+// GET /v1/applications   List all applications (MANAGER)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) ListApplications(c *gin.Context) {
 	var apps []model.Application
 	q := h.db.Preload("User").Preload("Event").Preload("TicketType")
@@ -187,7 +311,9 @@ func (h *TicketHandler) ListApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(apps))
 }
 
-// ── POST /v1/applications/:id/approve ──
+// ────────────────────────────────────────────────────────────
+// POST /v1/applications/:id/approve   Approve application (MANAGER)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) ApproveApplication(c *gin.Context) {
 	reviewerID, _ := uuid.Parse(c.GetString("user_id"))
 	var app model.Application
@@ -232,11 +358,13 @@ func (h *TicketHandler) ApproveApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(app))
 }
 
-// ── POST /v1/applications/:id/reject ──
 type RejectRequest struct {
 	Reason string `json:"reason"`
 }
 
+// ────────────────────────────────────────────────────────────
+// POST /v1/applications/:id/reject   Reject application (MANAGER)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) RejectApplication(c *gin.Context) {
 	reviewerID, _ := uuid.Parse(c.GetString("user_id"))
 	var req RejectRequest
@@ -255,17 +383,25 @@ func (h *TicketHandler) RejectApplication(c *gin.Context) {
 	now := time.Now()
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&app).Updates(map[string]interface{}{
-			"status": "rejected", "reason": req.Reason,
-			"reviewed_by": reviewerID, "reviewed_at": now,
+			"status":      "rejected",
+			"reason":      req.Reason,
+			"reviewed_by": reviewerID,
+			"reviewed_at": now,
 		}).Error; err != nil {
 			return err
 		}
-		// Return tickets to pool
-		return tx.Model(&model.TicketType{}).Where("id = ?", app.TicketTypeID).
-			Updates(map[string]interface{}{
-				"remaining": gorm.Expr("remaining + ?", app.Quantity),
-				"version":   gorm.Expr("version + 1"),
-			}).Error
+
+		// Return inventory to DB
+		if err := tx.Model(&model.TicketType{}).Where("id = ?", app.TicketTypeID).
+			Update("remaining", gorm.Expr("remaining + ?", app.Quantity)).Error; err != nil {
+			return err
+		}
+
+		// Also return to Redis
+		inventoryKey := "inventory:" + app.TicketTypeID.String()
+		h.redis.IncrBy(context.Background(), inventoryKey, int64(app.Quantity))
+
+		return nil
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Failed to reject"))
 		return
@@ -273,7 +409,9 @@ func (h *TicketHandler) RejectApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(app))
 }
 
-// ── GET /v1/tickets/my ──
+// ────────────────────────────────────────────────────────────
+// GET /v1/tickets/my   List my active tickets (EMPLOYEE)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) MyTickets(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var tickets []model.Ticket
@@ -284,7 +422,9 @@ func (h *TicketHandler) MyTickets(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(tickets))
 }
 
-// ── POST /v1/applications/:id/cancel ──
+// ────────────────────────────────────────────────────────────
+// POST /v1/applications/:id/cancel   Cancel application (EMPLOYEE)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) CancelApplication(c *gin.Context) {
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	appID := c.Param("id")
@@ -301,12 +441,10 @@ func (h *TicketHandler) CancelApplication(c *gin.Context) {
 	}
 
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		// 1. Update application status
 		if err := tx.Model(&app).Update("status", "cancelled").Error; err != nil {
 			return err
 		}
 
-		// 2. Return tickets to pool
 		if err := tx.Model(&model.TicketType{}).Where("id = ?", app.TicketTypeID).
 			Updates(map[string]interface{}{
 				"remaining": gorm.Expr("remaining + ?", app.Quantity),
@@ -315,10 +453,13 @@ func (h *TicketHandler) CancelApplication(c *gin.Context) {
 			return err
 		}
 
-		// 3. Delete/Invalidate tickets if already issued
 		if err := tx.Where("application_id = ?", app.ID).Delete(&model.Ticket{}).Error; err != nil {
 			return err
 		}
+
+		// Sync Redis
+		inventoryKey := "inventory:" + app.TicketTypeID.String()
+		h.redis.IncrBy(context.Background(), inventoryKey, int64(app.Quantity))
 
 		return nil
 	})
@@ -331,7 +472,9 @@ func (h *TicketHandler) CancelApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(gin.H{"message": "Application cancelled and tickets returned to pool"}))
 }
 
-// ── POST /v1/tickets/:id/cancel ──
+// ────────────────────────────────────────────────────────────
+// POST /v1/tickets/:id/cancel   Return/Cancel issued ticket (EMPLOYEE)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) CancelTicket(c *gin.Context) {
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	ticketID := c.Param("id")
@@ -343,7 +486,6 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 	}
 
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		// 1. Return 1 ticket to pool
 		if err := tx.Model(&model.TicketType{}).Where("id = ?", ticket.TicketTypeID).
 			Updates(map[string]interface{}{
 				"remaining": gorm.Expr("remaining + 1"),
@@ -352,7 +494,6 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 			return err
 		}
 
-		// 2. Create a NEW application record for the return (audit trail)
 		refundApp := model.Application{
 			UserID:         ticket.UserID,
 			EventID:        ticket.EventID,
@@ -366,10 +507,13 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 			return err
 		}
 
-		// 3. Delete the ticket
 		if err := tx.Delete(&ticket).Error; err != nil {
 			return err
 		}
+
+		// Sync Redis
+		inventoryKey := "inventory:" + ticket.TicketTypeID.String()
+		h.redis.IncrBy(context.Background(), inventoryKey, 1)
 
 		return nil
 	})
@@ -382,11 +526,13 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 	c.JSON(http.StatusOK, okResp(gin.H{"message": "Ticket returned successfully"}))
 }
 
-// ── POST /v1/checkin  (Manager) ──
 type CheckinRequest struct {
 	QRToken string `json:"qr_token" binding:"required"`
 }
 
+// ────────────────────────────────────────────────────────────
+// POST /v1/checkin   Scan ticket for check-in (MANAGER)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) Checkin(c *gin.Context) {
 	var req CheckinRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -395,7 +541,6 @@ func (h *TicketHandler) Checkin(c *gin.Context) {
 	}
 	checkerID, _ := uuid.Parse(c.GetString("user_id"))
 
-	// Atomic: mark as used only if NOT already used
 	result := h.db.Model(&model.Ticket{}).
 		Where("qr_token = ? AND is_used = false", req.QRToken).
 		Update("is_used", true)
@@ -423,12 +568,14 @@ func (h *TicketHandler) Checkin(c *gin.Context) {
 	h.db.Create(&checkin)
 
 	c.JSON(http.StatusOK, okResp(gin.H{
-		"message": "✅ Check-in successful!",
+		"message": "Check-in successful!",
 		"ticket":  ticket,
 	}))
 }
 
-// ── GET /v1/checkins ──
+// ────────────────────────────────────────────────────────────
+// GET /v1/checkins   List check-in records (MANAGER)
+// ────────────────────────────────────────────────────────────
 func (h *TicketHandler) ListCheckins(c *gin.Context) {
 	var checkins []model.Checkin
 	q := h.db.Preload("Ticket.Event").Preload("Checker")

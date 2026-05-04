@@ -36,7 +36,7 @@ func AcquireLock(ctx context.Context, client *redis.Client, key string, ttl time
 		if acquired {
 			return true, nil
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	return false, nil
 }
