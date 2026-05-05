@@ -55,7 +55,7 @@ func main() {
 	})
 
 	authH := handler.NewAuthHandler(db, cfg.JWTSecret)
-	eventH := handler.NewEventHandler(db)
+	eventH := handler.NewEventHandler(db, redisClient)
 	ticketH := handler.NewTicketHandler(db, redisClient)
 	reportH := handler.NewReportHandler(db)
 
@@ -80,6 +80,8 @@ func main() {
 	api.GET("/applications", middleware.RequireRole("event_manager"), ticketH.ListApplications)
 	api.POST("/applications/:id/approve", middleware.RequireRole("event_manager"), ticketH.ApproveApplication)
 	api.POST("/applications/:id/reject", middleware.RequireRole("event_manager"), ticketH.RejectApplication)
+	api.POST("/applications/:id/cancel", middleware.RequireRole("employee"), ticketH.CancelApplication)
+	api.POST("/tickets/:id/cancel", middleware.RequireRole("employee"), ticketH.CancelTicket)
 	api.GET("/tickets/my", middleware.RequireRole("employee"), ticketH.MyTickets)
 	api.POST("/checkin", middleware.RequireRole("event_manager"), ticketH.Checkin)
 	api.GET("/checkins", middleware.RequireRole("event_manager"), ticketH.ListCheckins)

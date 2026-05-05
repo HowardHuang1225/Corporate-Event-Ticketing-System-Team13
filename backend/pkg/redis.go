@@ -26,8 +26,19 @@ func NewRedisClient(url string) *redis.Client {
 }
 
 // AcquireLock tries to get a distributed lock. Returns true if acquired.
-func AcquireLock(ctx context.Context, client *redis.Client, key string, ttl time.Duration) (bool, error) {
-	return client.SetNX(ctx, "lock:"+key, 1, ttl).Result()
+func AcquireLock(ctx context.Context, client *redis.Client, key string, ttl time.Duration, waitTimeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(waitTimeout)
+	for time.Now().Before(deadline) {
+		acquired, err := client.SetNX(ctx, "lock:"+key, 1, ttl).Result()
+		if err != nil {
+			return false, err
+		}
+		if acquired {
+			return true, nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false, nil
 }
 
 // ReleaseLock releases the distributed lock.

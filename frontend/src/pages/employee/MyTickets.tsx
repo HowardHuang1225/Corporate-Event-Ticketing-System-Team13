@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import api from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
@@ -13,6 +13,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function MyTickets() {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null)
 
   const { data: apps, isLoading } = useQuery({
@@ -26,6 +27,18 @@ export default function MyTickets() {
     queryFn: () => api.get('/tickets/my').then(r => r.data.data),
     enabled: !!user,
   })
+
+  const handleReturnTicket = async (ticketId: string) => {
+    if (!window.confirm('確定要退掉這張票嗎？退掉後票券將失效且無法恢復。')) return
+    try {
+      await api.post(`/tickets/${ticketId}/cancel`)
+      // Refresh all related data
+      queryClient.invalidateQueries({ queryKey: ['my-tickets'] })
+      queryClient.invalidateQueries({ queryKey: ['my-applications'] })
+    } catch (err: any) {
+      alert(err.response?.data?.error || '退票失敗')
+    }
+  }
 
   if (isLoading) return <div className="empty-state"><div className="spinner" /></div>
 
@@ -58,9 +71,18 @@ export default function MyTickets() {
                       {ticket.is_used ? '已核銷' : '未使用'}
                     </span>
                     {!ticket.is_used && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}>
-                        {expandedTicket === ticket.id ? '收起 QR' : '顯示 QR'}
-                      </button>
+                      <>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}>
+                          {expandedTicket === ticket.id ? '收起 QR' : '顯示 QR'}
+                        </button>
+                        <button 
+                          className="btn btn-sm" 
+                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                          onClick={() => handleReturnTicket(ticket.id)}
+                        >
+                          退票
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

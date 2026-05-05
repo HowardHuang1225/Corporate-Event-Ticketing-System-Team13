@@ -1,19 +1,26 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"ticketing-system/backend/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type EventHandler struct{ db *gorm.DB }
+type EventHandler struct {
+	db    *gorm.DB
+	redis *redis.Client
+}
 
-func NewEventHandler(db *gorm.DB) *EventHandler { return &EventHandler{db: db} }
+func NewEventHandler(db *gorm.DB, redis *redis.Client) *EventHandler {
+	return &EventHandler{db: db, redis: redis}
+}
 
 type CreateEventRequest struct {
 	Title               string    `json:"title" binding:"required"`
@@ -121,7 +128,20 @@ func (h *EventHandler) UpdateEvent(c *gin.Context) {
 	delete(updates, "created_by")
 	delete(updates, "status")
 	h.db.Model(&event).Updates(updates)
+
+	// Invalidate event cache if needed
+	h.invalidateEventCache(c.Request.Context(), event.ID.String())
+
 	c.JSON(http.StatusOK, okResp(event))
+}
+
+func (h *EventHandler) invalidateEventCache(ctx context.Context, eventID string) {
+	// Find all ticket types for this event and clear their loaded flag
+	var ttIDs []string
+	h.db.Model(&model.TicketType{}).Where("event_id = ?", eventID).Pluck("id", &ttIDs)
+	for _, id := range ttIDs {
+		h.redis.Del(ctx, "inventory_loaded:"+id)
+	}
 }
 
 func (h *EventHandler) PublishEvent(c *gin.Context) {
