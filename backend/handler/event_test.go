@@ -47,7 +47,7 @@ func TestCreateEventSuccess(t *testing.T) {
 		c.Set("role", "event_manager")
 		c.Next()
 	})
-	router.POST("/events", NewEventHandler(tx).CreateEvent)
+	router.POST("/events", NewEventHandler(tx, nil).CreateEvent)
 
 	now := time.Now().UTC().Truncate(time.Second)
 	resp := performEventJSON(router, http.MethodPost, "/events", gin.H{
@@ -120,11 +120,13 @@ func TestListEventsSupportsSpecStates(t *testing.T) {
 		c.Set("role", "event_manager")
 		c.Next()
 	})
-	router.GET("/events", NewEventHandler(tx).ListEvents)
+	router.GET("/events", NewEventHandler(tx, nil).ListEvents)
 
+	printTestProgress("測試列表端點是否能夠正確過濾並回傳草稿、已發布、已截止和已結束的活動\n")
+	printTestProgress("==================================================\n")
 	for _, state := range specEventStates {
 		t.Run(state, func(t *testing.T) {
-			t.Logf("Test if the list endpoint can filter and return events with status %q.\n", state)
+			printTestProgressf("Test if the list endpoint can filter and return events with status %q.\n", state)
 
 			resp := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/events?status="+state, nil)
@@ -148,6 +150,7 @@ func TestListEventsSupportsSpecStates(t *testing.T) {
 			}
 		})
 	}
+	printTestProgress("==================================================\n\n")
 }
 
 // TestEventStateTransitionsBySchedule verifies the time-driven state machine:
@@ -183,11 +186,14 @@ func TestEventStateTransitionsBySchedule(t *testing.T) {
 		{wantStatus: "ended"},
 	}
 
+	printTestProgress("測試活動是否會根據時間表自動從草稿轉為已發布、再轉為已截止、最後轉為已結束\n")
+	printTestProgress("==================================================\n")
 	for _, check := range checks {
-		t.Logf("Waiting for the event to transition to %q status according to the schedule...\n", check.wantStatus)
+		printTestProgressf("Waiting for the event to transition to %q status according to the schedule...\n", check.wantStatus)
 		time.Sleep(5 * time.Second)
 		assertEventStatusFromDB(t, db, eventID.String(), check.wantStatus)
 	}
+	printTestProgress("==================================================\n\n")
 }
 
 // openEventTestDB connects to local Docker Postgres for event handler tests.

@@ -86,9 +86,11 @@ func TestLoginDemoAccounts(t *testing.T) {
 		},
 	}
 
+	printTestProgress("測試 demo 的帳號是否能夠成功登入\n")
+	printTestProgress("==================================================\n")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			printTestProgress(tt.progress)
 
 			resp := performLogin(router, tt.employeeID, tt.password)
 
@@ -125,6 +127,7 @@ func TestLoginDemoAccounts(t *testing.T) {
 			}
 		})
 	}
+	printTestProgress("==================================================\n\n")
 }
 
 // TestLoginRejectsInvalidCredentials covers both possible invalid credential
@@ -167,9 +170,11 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 		},
 	}
 
+	printTestProgress("測試不合法的帳號密碼\n")
+	printTestProgress("==================================================\n")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			printTestProgress(tt.progress)
 
 			resp := performLogin(router, tt.employeeID, tt.password)
 
@@ -179,6 +184,7 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 			assertHandlerErrorCode(t, resp.Body.Bytes(), "UNAUTHORIZED")
 		})
 	}
+	printTestProgress("==================================================\n\n")
 }
 
 // openLoginTestDB connects to the local Docker Postgres used by integration-like
