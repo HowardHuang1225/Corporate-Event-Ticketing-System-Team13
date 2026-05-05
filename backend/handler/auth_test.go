@@ -24,22 +24,48 @@ import (
 
 const loginTestJWTSecret = "login-test-secret"
 
-// TestLoginDemoAccounts verifies that every demo account shown in the README/UI
-// can log in and receives the expected role, region, and JWT claims.
-func TestLoginDemoAccounts(t *testing.T) {
+func TestAuth(t *testing.T) {
+	tasks := []testTask{
+		{
+			description: "測試 demo 帳號是否能成功登入並且拿到正確的角色、廠區和 JWT claims",
+			target:      LoginDemoAccounts,
+		},
+		{
+			description: "測試不合法的帳號密碼",
+			target:      LoginInvalidCredentials,
+		},
+	}
+
+	mainTestFunc(t, tasks)
+}
+
+func LoginDemoAccounts(t *testing.T, errs *testErrors) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	db := openLoginTestDB(t)
+	printTestProgress("測試 demo 帳號是否能成功登入並且拿到正確的角色、廠區和 JWT claims\n")
+	printTestProgress("==================================================\n")
+
+	db, err := openLoginTestDB(t)
+	if err != nil {
+		errs.Add("open login test database", "%v", err)
+		return
+	}
 	tx := db.Begin()
 	if tx.Error != nil {
-		t.Fatalf("failed to begin login test transaction: %v", tx.Error)
+		errs.Add("begin transaction", "failed to begin login test transaction: %v", tx.Error)
+		return
 	}
+
 	// Keep the Docker Postgres database clean after the test run.
 	t.Cleanup(func() {
 		tx.Rollback()
 	})
 
-	seedLoginDemoUsers(t, tx)
+	if err := seedLoginDemoUsers(tx); err != nil {
+		errs.Add("seed demo users", "%v", err)
+		return
+	}
 
 	router := gin.New()
 	router.POST("/login", NewAuthHandler(tx, loginTestJWTSecret).Login)
@@ -58,7 +84,7 @@ func TestLoginDemoAccounts(t *testing.T) {
 			password:   "password",
 			wantRole:   "event_manager",
 			wantRegion: "台南廠",
-			progress:   "Test if the manager account can log in and receives the correct role and region.\n",
+			progress:   "test if the manager account can log in and receives the correct role and region.",
 		},
 		{
 			name:       "employee tainan",
@@ -66,7 +92,7 @@ func TestLoginDemoAccounts(t *testing.T) {
 			password:   "password",
 			wantRole:   "employee",
 			wantRegion: "台南廠",
-			progress:   "Test if the Tainan employee account can log in and receives the correct role and region.\n",
+			progress:   "test if the Tainan employee account can log in and receives the correct role and region.",
 		},
 		{
 			name:       "employee hsinchu",
@@ -74,7 +100,7 @@ func TestLoginDemoAccounts(t *testing.T) {
 			password:   "password",
 			wantRole:   "employee",
 			wantRegion: "新竹廠",
-			progress:   "Test if the Hsinchu employee account can log in and receives the correct role and region.\n",
+			progress:   "test if the Hsinchu employee account can log in and receives the correct role and region.",
 		},
 		{
 			name:       "hr",
@@ -82,70 +108,91 @@ func TestLoginDemoAccounts(t *testing.T) {
 			password:   "password",
 			wantRole:   "hr",
 			wantRegion: "台南廠",
-			progress:   "Test if the HR account can log in and receives the correct role and region.\n",
+			progress:   "test if the HR account can log in and receives the correct role and region.",
 		},
 	}
 
-	printTestProgress("測試 demo 的帳號是否能夠成功登入\n")
-	printTestProgress("==================================================\n")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			printTestProgress(tt.progress)
+			// printTestProgress(tt.progress + "\n")
 
 			resp := performLogin(router, tt.employeeID, tt.password)
 
 			if resp.Code != http.StatusOK {
-				t.Fatalf("expected status 200, got %d with body %s", resp.Code, resp.Body.String())
+				errs.Add(tt.progress, "expected status 200, got %d with body %s", resp.Code, resp.Body.String())
+				return
 			}
 
-			body := decodeLoginResponse(t, resp.Body.Bytes())
+			body, err := decodeLoginResponse(resp.Body.Bytes())
+			if err != nil {
+				errs.Add(tt.progress, "%v", err)
+				return
+			}
 			if !body.Success {
-				t.Fatal("expected success=true")
+				errs.Add(tt.progress, "expected success=true, got false with body %s", resp.Body.String())
+				return
 			}
 			if body.Data.AccessToken == "" {
-				t.Fatal("expected access token")
+				errs.Add(tt.progress, "expected access token, got empty with body %s", resp.Body.String())
+				return
 			}
 			if body.Data.User.EmployeeID != tt.employeeID {
-				t.Fatalf("expected employee_id %q, got %q", tt.employeeID, body.Data.User.EmployeeID)
+				errs.Add(tt.progress, "expected employee_id %q, got %q with body %s", tt.employeeID, body.Data.User.EmployeeID, resp.Body.String())
+				return
 			}
 			if body.Data.User.Role != tt.wantRole {
-				t.Fatalf("expected role %q, got %q", tt.wantRole, body.Data.User.Role)
+				errs.Add(tt.progress, "expected role %q, got %q", tt.wantRole, body.Data.User.Role)
+				return
 			}
 			if body.Data.User.Region != tt.wantRegion {
-				t.Fatalf("expected region %q, got %q", tt.wantRegion, body.Data.User.Region)
+				errs.Add(tt.progress, "expected region %q, got %q", tt.wantRegion, body.Data.User.Region)
+				return
 			}
 
 			claims, err := pkg.ValidateToken(body.Data.AccessToken, loginTestJWTSecret)
 			if err != nil {
-				t.Fatalf("expected valid access token: %v", err)
+				errs.Add(tt.progress, "expected valid access token: %v", err)
+				return
 			}
 			if claims.EmployeeID != tt.employeeID {
-				t.Fatalf("expected token employee id %q, got %q", tt.employeeID, claims.EmployeeID)
+				errs.Add(tt.progress, "expected token employee id %q, got %q", tt.employeeID, claims.EmployeeID)
+				return
 			}
 			if claims.Role != tt.wantRole {
-				t.Fatalf("expected token role %q, got %q", tt.wantRole, claims.Role)
+				errs.Add(tt.progress, "expected token role %q, got %q", tt.wantRole, claims.Role)
+				return
 			}
 		})
 	}
 	printTestProgress("==================================================\n\n")
 }
 
-// TestLoginRejectsInvalidCredentials covers both possible invalid credential
-// paths: an unknown employee id and a valid employee id with a wrong password.
-func TestLoginRejectsInvalidCredentials(t *testing.T) {
+func LoginInvalidCredentials(t *testing.T, errs *testErrors) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	db := openLoginTestDB(t)
+	printTestProgress("測試不合法的帳號密碼\n")
+	printTestProgress("==================================================\n")
+
+	db, err := openLoginTestDB(t)
+	if err != nil {
+		errs.Add("open login test database", "%v", err)
+		return
+	}
 	tx := db.Begin()
 	if tx.Error != nil {
-		t.Fatalf("failed to begin login test transaction: %v", tx.Error)
+		errs.Add("begin transaction", "failed to begin login test transaction: %v", tx.Error)
+		return
 	}
 	// Roll back seeded users and any updates made during this test.
 	t.Cleanup(func() {
 		tx.Rollback()
 	})
 
-	seedLoginDemoUsers(t, tx)
+	if err := seedLoginDemoUsers(tx); err != nil {
+		errs.Add("seed demo users", "%v", err)
+		return
+	}
 
 	router := gin.New()
 	router.POST("/login", NewAuthHandler(tx, loginTestJWTSecret).Login)
@@ -160,49 +207,51 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 			name:       "wrong employee id",
 			employeeID: "UNKNOWN",
 			password:   "password",
-			progress:   "Test if an unknown employee ID is rejected with the correct error code.\n",
+			progress:   "test if an unknown employee ID is rejected with the correct error code.",
 		},
 		{
 			name:       "wrong password",
 			employeeID: "EMP001",
 			password:   "wrong-password",
-			progress:   "Test if a valid employee ID with an incorrect password is rejected with the correct error code.\n",
+			progress:   "test if a valid employee ID with an incorrect password is rejected with the correct error code.",
 		},
 	}
 
-	printTestProgress("測試不合法的帳號密碼\n")
-	printTestProgress("==================================================\n")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			printTestProgress(tt.progress)
+			// printTestProgress(tt.progress + "\n")
 
 			resp := performLogin(router, tt.employeeID, tt.password)
 
 			if resp.Code != http.StatusUnauthorized {
-				t.Fatalf("expected status 401, got %d with body %s", resp.Code, resp.Body.String())
+				errs.Add(tt.progress, "expected status 401, got %d with body %s", resp.Code, resp.Body.String())
+				return
 			}
-			assertHandlerErrorCode(t, resp.Body.Bytes(), "UNAUTHORIZED")
+			if err := assertHandlerErrorCode(resp.Body.Bytes(), "UNAUTHORIZED"); err != nil {
+				errs.Add(tt.progress, "%v", err)
+				return
+			}
 		})
 	}
 	printTestProgress("==================================================\n\n")
 }
 
 // openLoginTestDB connects to the local Docker Postgres used by integration-like
-// login tests. If Postgres is not running, the login tests are skipped so pure
-// unit test runs still work without Docker.
-func openLoginTestDB(t *testing.T) *gorm.DB {
+// login tests and returns connection or migration failures to the shared test
+// error collector.
+func openLoginTestDB(t *testing.T) (*gorm.DB, error) {
 	t.Helper()
 
 	db, err := gorm.Open(postgres.Open(loginTestDSN()), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
-		t.Skipf("Postgres is not available for login tests: %v", err)
+		return nil, fmt.Errorf("Postgres is not available for login tests: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		t.Fatalf("failed to access sql db: %v", err)
+		return nil, fmt.Errorf("failed to access sql db: %w", err)
 	}
 	t.Cleanup(func() {
 		sqlDB.Close()
@@ -211,14 +260,14 @@ func openLoginTestDB(t *testing.T) *gorm.DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := sqlDB.PingContext(ctx); err != nil {
-		t.Skipf("Postgres is not reachable for login tests: %v", err)
+		return nil, fmt.Errorf("Postgres is not reachable for login tests: %w", err)
 	}
 
 	if err := db.AutoMigrate(&model.User{}); err != nil {
-		t.Fatalf("failed to migrate users table: %v", err)
+		return nil, fmt.Errorf("failed to migrate users table: %w", err)
 	}
 
-	return db
+	return db, nil
 }
 
 // loginTestDSN lets CI or a developer override the DB with TEST_DATABASE_URL,
@@ -251,12 +300,10 @@ func envOrDefault(key, fallback string) string {
 // seedLoginDemoUsers upserts the demo users required by the login tests into
 // the current transaction, making the test repeatable even if the DB already has
 // demo data from main.seedData.
-func seedLoginDemoUsers(t *testing.T, db *gorm.DB) {
-	t.Helper()
-
+func seedLoginDemoUsers(db *gorm.DB) error {
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
 	if err != nil {
-		t.Fatalf("failed to hash demo password: %v", err)
+		return fmt.Errorf("failed to hash demo password: %w", err)
 	}
 
 	users := []model.User{
@@ -315,9 +362,10 @@ func seedLoginDemoUsers(t *testing.T, db *gorm.DB) {
 				"is_active",
 			}),
 		}).Create(&user).Error; err != nil {
-			t.Fatalf("failed to seed demo user %s: %v", user.EmployeeID, err)
+			return fmt.Errorf("failed to seed demo user %s: %w", user.EmployeeID, err)
 		}
 	}
+	return nil
 }
 
 // performLogin sends the same JSON payload shape used by the frontend login
@@ -352,12 +400,10 @@ type loginResponse struct {
 }
 
 // decodeLoginResponse keeps response assertions type-safe and easy to read.
-func decodeLoginResponse(t *testing.T, body []byte) loginResponse {
-	t.Helper()
-
+func decodeLoginResponse(body []byte) (loginResponse, error) {
 	var resp loginResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("failed to decode login response: %v", err)
+		return loginResponse{}, fmt.Errorf("failed to decode login response: %w", err)
 	}
-	return resp
+	return resp, nil
 }
