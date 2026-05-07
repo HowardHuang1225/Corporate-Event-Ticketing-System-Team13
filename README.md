@@ -96,3 +96,17 @@ npm run dev
   - `docs:` (文件更新)
   - `style:` (程式碼格式、UI 調整)
   - `chore:` (建置工具、依賴項更新)
+
+---
+
+## Unit Test
+
+```bash
+docker-compose up --build
+
+cd backedn
+go test ./handler // 跑handler底下所有測試
+go test ./handler -run TestEvent // 跑event_test.go
+go test ./handler -run TestAuth // 跑auth_test.go
+go test ./handler -run TestTicket // 跑ticket_test.go
+```
