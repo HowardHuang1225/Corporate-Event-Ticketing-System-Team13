@@ -43,9 +43,9 @@ func (h *EventHandler) ListEvents(c *gin.Context) {
 	if status := c.Query("status"); status != "" {
 		q = q.Where("status = ?", status)
 	}
-	// Employees only see published/closed
+	// Employees see published, closed and ended events
 	if c.GetString("role") == "employee" {
-		q = q.Where("status IN ('published','closed')")
+		q = q.Where("status IN ('published','closed','ended')")
 	}
 	q.Order("created_at desc").Find(&events)
 	c.JSON(http.StatusOK, okResp(events))

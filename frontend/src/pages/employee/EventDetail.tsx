@@ -66,7 +66,7 @@ export default function EventDetail() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>{event.title}</h1>
-          <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : '已截止'}</span>
+          <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : event.status === 'ended' ? '已結束' : '已截止'}</span>
         </div>
         <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 20 }}>{event.description}</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
