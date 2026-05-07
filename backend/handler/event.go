@@ -144,17 +144,44 @@ func (h *EventHandler) invalidateEventCache(ctx context.Context, eventID string)
 	}
 }
 
+func validateTimelineForPublish(publishAt time.Time, event model.Event) (string, string) {
+	if !publishAt.Before(event.ApplyDeadline) {
+		return "INVALID_TIMELINE", "發布時間必須早於申請截止時間"
+	}
+	if event.ApplyDeadline.After(event.StartTime) {
+		return "INVALID_TIMELINE", "申請截止時間必須早於或等於活動開始時間"
+	}
+	if !event.StartTime.Before(event.EndTime) {
+		return "INVALID_TIMELINE", "活動結束時間必須晚於開始時間"
+	}
+	return "", ""
+}
+
 func (h *EventHandler) PublishEvent(c *gin.Context) {
 	var event model.Event
 	if err := h.db.First(&event, "id = ?", c.Param("id")).Error; err != nil {
 		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Event not found"))
 		return
 	}
+
 	if event.Status != "draft" {
 		c.JSON(http.StatusBadRequest, errResp("INVALID_STATUS", "Only draft events can be published"))
 		return
 	}
-	h.db.Model(&event).Update("status", "published")
+
+	if code, msg := validateTimelineForPublish(time.Now(), event); code != "" {
+		c.JSON(http.StatusBadRequest, errResp(code, msg))
+		return
+	}
+
+	if err := h.db.Model(&event).Update("status", "published").Error; err != nil {
+		c.JSON(http.StatusInternalServerError, errResp("INTERNAL_ERROR", "Failed to publish event"))
+		return
+	}
+
+	h.invalidateEventCache(c.Request.Context(), event.ID.String())
+
+	h.db.Preload("TicketTypes").Preload("Creator").First(&event, "id = ?", event.ID)
 	c.JSON(http.StatusOK, okResp(event))
 }
 
