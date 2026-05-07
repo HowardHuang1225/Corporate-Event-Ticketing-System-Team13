@@ -34,6 +34,7 @@ func main() {
 	db := database.Connect(cfg.DatabaseURL)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
 	seedData(db)
+	pkg.StartEventStateScheduler(db, redisClient, 1*time.Minute)
 
 	r := gin.Default()
 
