@@ -14,6 +14,7 @@ type Event struct {
 	Description         string       `                                      json:"description"`
 	Venue               string       `gorm:"not null"                       json:"venue"`
 	ImageURL            string       `                                      json:"image_url"`
+	PublishTime         time.Time    `                                      json:"publish_time"`
 	StartTime           time.Time    `gorm:"not null"                       json:"start_time"`
 	EndTime             time.Time    `gorm:"not null"                       json:"end_time"`
 	ApplyDeadline       time.Time    `gorm:"not null"                       json:"apply_deadline"`

@@ -1,26 +1,36 @@
-package handler
+package report
 
 import (
-	"net/http"
+	"encoding/csv"
+	"fmt"
+	"strings"
 
 	"ticketing-system/backend/model"
+	"ticketing-system/backend/repository"
+	"ticketing-system/backend/service/apperror"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-type ReportHandler struct{ db *gorm.DB }
+type Service struct {
+	db *gorm.DB
+}
 
-func NewReportHandler(db *gorm.DB) *ReportHandler { return &ReportHandler{db: db} }
+func New(repos *repository.Repositories) *Service {
+	return &Service{db: repos.DB}
+}
 
 type DeptStat struct {
 	Department string `json:"department"`
 	Count      int64  `json:"count"`
 }
+
 type RegionStat struct {
 	Region string `json:"region"`
 	Count  int64  `json:"count"`
 }
+
 type TypeStat struct {
 	TicketTypeName string `json:"ticket_type_name"`
 	Total          int64  `json:"total"`
@@ -29,34 +39,45 @@ type TypeStat struct {
 	Active         int64  `json:"active"`
 }
 
-func (h *ReportHandler) EventStats(c *gin.Context) {
-	eventID := c.Param("id")
+type EventOverview struct {
+	EventID         string  `json:"event_id"`
+	Title           string  `json:"title"`
+	AppliedApps     int64   `json:"applied_apps"`
+	AppliedTickets  int64   `json:"applied_tickets"`
+	AppliedUsers    int64   `json:"applied_users"`
+	ApprovedTickets int64   `json:"approved_tickets"`
+	ApprovedUsers   int64   `json:"approved_users"`
+	Cancelled       int64   `json:"cancelled"`
+	TotalTickets    int64   `json:"total_tickets"`
+	CheckedIn       int64   `json:"checked_in"`
+	CheckInRate     float64 `json:"check_in_rate"`
+}
 
+func (s *Service) EventStats(eventID string) (gin.H, error) {
 	var event model.Event
-	if err := h.db.First(&event, "id = ?", eventID).Error; err != nil {
-		c.JSON(http.StatusNotFound, errResp("NOT_FOUND", "Event not found"))
-		return
+	if err := s.db.First(&event, "id = ?", eventID).Error; err != nil {
+		return nil, apperror.NotFound("Event not found")
 	}
 
 	var appliedApps, appliedTickets, appliedUsers int64
-	h.db.Model(&model.Application{}).Where("event_id = ?", eventID).Count(&appliedApps)
-	h.db.Model(&model.Application{}).Where("event_id = ?", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&appliedTickets)
-	h.db.Model(&model.Application{}).Where("event_id = ?", eventID).Distinct("user_id").Count(&appliedUsers)
+	s.db.Model(&model.Application{}).Where("event_id = ?", eventID).Count(&appliedApps)
+	s.db.Model(&model.Application{}).Where("event_id = ?", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&appliedTickets)
+	s.db.Model(&model.Application{}).Where("event_id = ?", eventID).Distinct("user_id").Count(&appliedUsers)
 
 	var approvedApps, approvedTickets, approvedUsers int64
-	h.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Count(&approvedApps)
-	h.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&approvedTickets)
-	h.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Distinct("user_id").Count(&approvedUsers)
+	s.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Count(&approvedApps)
+	s.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&approvedTickets)
+	s.db.Model(&model.Application{}).Where("event_id = ? AND status = 'approved'", eventID).Distinct("user_id").Count(&approvedUsers)
 
 	var cancelledTickets int64
-	h.db.Model(&model.Application{}).Where("event_id = ? AND status = 'cancelled'", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&cancelledTickets)
+	s.db.Model(&model.Application{}).Where("event_id = ? AND status = 'cancelled'", eventID).Select("COALESCE(SUM(quantity), 0)").Scan(&cancelledTickets)
 
 	var totalTickets, checkedInTickets, checkedInUsers int64
-	h.db.Model(&model.Ticket{}).Where("event_id = ?", eventID).Count(&totalTickets)
-	h.db.Model(&model.Checkin{}).
+	s.db.Model(&model.Ticket{}).Where("event_id = ?", eventID).Count(&totalTickets)
+	s.db.Model(&model.Checkin{}).
 		Joins("JOIN tickets ON checkins.ticket_id = tickets.id").
 		Where("tickets.event_id = ?", eventID).Count(&checkedInTickets)
-	h.db.Model(&model.Checkin{}).
+	s.db.Model(&model.Checkin{}).
 		Joins("JOIN tickets ON checkins.ticket_id = tickets.id").
 		Where("tickets.event_id = ?", eventID).Distinct("tickets.user_id").Count(&checkedInUsers)
 
@@ -66,21 +87,21 @@ func (h *ReportHandler) EventStats(c *gin.Context) {
 	}
 
 	var deptStats []DeptStat
-	h.db.Model(&model.Application{}).
+	s.db.Model(&model.Application{}).
 		Select("users.department, COUNT(DISTINCT users.id) as count").
 		Joins("JOIN users ON applications.user_id = users.id").
 		Where("applications.event_id = ? AND applications.status = 'approved'", eventID).
 		Group("users.department").Scan(&deptStats)
 
 	var regionStats []RegionStat
-	h.db.Model(&model.Application{}).
+	s.db.Model(&model.Application{}).
 		Select("users.region, COUNT(DISTINCT users.id) as count").
 		Joins("JOIN users ON applications.user_id = users.id").
 		Where("applications.event_id = ? AND applications.status = 'approved'", eventID).
 		Group("users.region").Scan(&regionStats)
 
 	var typeStats []TypeStat
-	h.db.Model(&model.TicketType{}).
+	s.db.Model(&model.TicketType{}).
 		Select(`
 			ticket_types.name as ticket_type_name, 
 			(SELECT COALESCE(SUM(quantity), 0) FROM applications WHERE applications.ticket_type_id = ticket_types.id AND applications.event_id = ?) as total,
@@ -91,41 +112,28 @@ func (h *ReportHandler) EventStats(c *gin.Context) {
 		Where("ticket_types.event_id = ?", eventID).
 		Scan(&typeStats)
 
-	c.JSON(http.StatusOK, okResp(gin.H{
-		"event":            event,
-		"applied_apps":     appliedApps,
-		"applied_tickets":  appliedTickets,
-		"applied_users":    appliedUsers,
-		"approved_apps":    approvedApps,
-		"approved_tickets": approvedTickets,
-		"cancelled_tickets": cancelledTickets,
-		"approved_users":   approvedUsers,
-		"total_tickets":    totalTickets,
+	return gin.H{
+		"event":              event,
+		"applied_apps":       appliedApps,
+		"applied_tickets":    appliedTickets,
+		"applied_users":      appliedUsers,
+		"approved_apps":      approvedApps,
+		"approved_tickets":   approvedTickets,
+		"cancelled_tickets":  cancelledTickets,
+		"approved_users":     approvedUsers,
+		"total_tickets":      totalTickets,
 		"checked_in_tickets": checkedInTickets,
 		"checked_in_users":   checkedInUsers,
 		"check_in_rate":      checkInRate,
-		"by_department":    deptStats,
-		"by_region":        regionStats,
-		"by_ticket_type":   typeStats,
-	}))
+		"by_department":      deptStats,
+		"by_region":          regionStats,
+		"by_ticket_type":     typeStats,
+	}, nil
 }
 
-func (h *ReportHandler) AllEventsOverview(c *gin.Context) {
-	type EventOverview struct {
-		EventID         string  `json:"event_id"`
-		Title           string  `json:"title"`
-		AppliedApps     int64   `json:"applied_apps"`
-		AppliedTickets  int64   `json:"applied_tickets"`
-		AppliedUsers    int64   `json:"applied_users"`
-		ApprovedTickets int64   `json:"approved_tickets"`
-		ApprovedUsers   int64   `json:"approved_users"`
-		Cancelled       int64   `json:"cancelled"`
-		TotalTickets    int64   `json:"total_tickets"`
-		CheckedIn       int64   `json:"checked_in"`
-		CheckInRate     float64 `json:"check_in_rate"`
-	}
+func (s *Service) Overview() ([]EventOverview, error) {
 	var overview []EventOverview
-	h.db.Model(&model.Event{}).
+	err := s.db.Model(&model.Event{}).
 		Select(`
 			events.id as event_id, 
 			events.title, 
@@ -144,6 +152,37 @@ func (h *ReportHandler) AllEventsOverview(c *gin.Context) {
 			) as check_in_rate
 		`).
 		Order("events.start_time DESC").
-		Scan(&overview)
-	c.JSON(http.StatusOK, okResp(overview))
+		Scan(&overview).Error
+	if err != nil {
+		return nil, apperror.Internal("Failed to load report overview")
+	}
+	return overview, nil
+}
+
+func (s *Service) ExportEventCSV(eventID string) (string, error) {
+	stats, err := s.EventStats(eventID)
+	if err != nil {
+		return "", err
+	}
+
+	var out strings.Builder
+	writer := csv.NewWriter(&out)
+	_ = writer.Write([]string{"metric", "value"})
+	for _, key := range []string{
+		"applied_apps",
+		"applied_tickets",
+		"applied_users",
+		"approved_apps",
+		"approved_tickets",
+		"approved_users",
+		"cancelled_tickets",
+		"total_tickets",
+		"checked_in_tickets",
+		"checked_in_users",
+		"check_in_rate",
+	} {
+		_ = writer.Write([]string{key, fmt.Sprint(stats[key])})
+	}
+	writer.Flush()
+	return out.String(), nil
 }
