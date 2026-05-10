@@ -26,18 +26,18 @@ func SeedDemoData(db *gorm.DB) {
 	}
 
 	users := []model.User{
-		{EmployeeID: "MGR001", Name: "Event Manager", Email: "manager@company.com", Department: "Welfare Committee", Region: "Tainan", Role: "event_manager", PasswordHash: hash("password")},
-		{EmployeeID: "EMP001", Name: "Tainan Employee", Email: "emp001@company.com", Department: "Engineering", Region: "Tainan", Role: "employee", PasswordHash: hash("password")},
-		{EmployeeID: "EMP002", Name: "Hsinchu Employee", Email: "emp002@company.com", Department: "Engineering", Region: "Hsinchu", Role: "employee", PasswordHash: hash("password")},
-		{EmployeeID: "EMP003", Name: "Operations Employee", Email: "emp003@company.com", Department: "Operations", Region: "Tainan", Role: "employee", PasswordHash: hash("password")},
-		{EmployeeID: "EMP004", Name: "Sales Employee", Email: "emp004@company.com", Department: "Sales", Region: "Tainan", Role: "employee", PasswordHash: hash("password")},
-		{EmployeeID: "HR001", Name: "HR Analyst", Email: "hr@company.com", Department: "Human Resources", Region: "Tainan", Role: "hr", PasswordHash: hash("password")},
+		{EmployeeID: "MGR001", Name: "王大明", Email: "manager@company.com", Department: "福委會", Region: "台南廠", Role: "event_manager", PasswordHash: hash("password")},
+		{EmployeeID: "EMP001", Name: "李小花", Email: "emp001@company.com", Department: "工程部", Region: "台南廠", Role: "employee", PasswordHash: hash("password")},
+		{EmployeeID: "EMP002", Name: "張三", Email: "emp002@company.com", Department: "人事部", Region: "新竹廠", Role: "employee", PasswordHash: hash("password")},
+		{EmployeeID: "EMP003", Name: "陳小明", Email: "emp003@company.com", Department: "製程部", Region: "台南廠", Role: "employee", PasswordHash: hash("password")},
+		{EmployeeID: "EMP004", Name: "林美玲", Email: "emp004@company.com", Department: "設計部", Region: "台南廠", Role: "employee", PasswordHash: hash("password")},
+		{EmployeeID: "HR001", Name: "陳副理", Email: "hr@company.com", Department: "人資部", Region: "台南廠", Role: "hr", PasswordHash: hash("password")},
 	}
 	db.Create(&users)
 
 	managerID := users[0].ID
 	now := time.Now()
-	stringPtr := func(value string) *string { return &value }
+	sp := func(value string) *string { return &value }
 
 	seeds := []struct {
 		event model.Event
@@ -45,58 +45,33 @@ func SeedDemoData(db *gorm.DB) {
 	}{
 		{
 			event: model.Event{
-				Title:               "Company Family Day",
-				Venue:               "Tainan Main Hall",
-				Description:         "Annual company family day event.",
-				PublishTime:         now.Add(10 * 24 * time.Hour),
-				StartTime:           now.Add(30 * 24 * time.Hour),
-				EndTime:             now.Add(31 * 24 * time.Hour),
-				ApplyDeadline:       now.Add(30*24*time.Hour + 12*time.Hour),
-				Status:              "published",
-				RegionRestriction:   stringPtr("Tainan"),
-				MaxTicketsPerPerson: 2,
-				CreatedBy:           managerID,
+				Title: "2024 藝文展覽 — 當代水墨特展", Venue: "台南市立美術館",
+				Description:         "精選 20 位知名藝術家的水墨作品，帶您感受東方藝術的魅力。",
+				StartTime:           now.Add(30 * 24 * time.Hour), EndTime: now.Add(31 * 24 * time.Hour),
+				ApplyDeadline: now.Add(20 * 24 * time.Hour), Status: "published",
+				RegionRestriction: sp("台南"), MaxTicketsPerPerson: 2, CreatedBy: managerID,
 			},
-			types: []model.TicketType{
-				{Name: "General", TotalQuota: 100, Remaining: 100},
-				{Name: "Family", TotalQuota: 50, Remaining: 50},
-			},
+			types: []model.TicketType{{Name: "一般票", TotalQuota: 100, Remaining: 100}, {Name: "眷屬票", TotalQuota: 50, Remaining: 50}},
 		},
 		{
 			event: model.Event{
-				Title:               "Wellness Workshop",
-				Venue:               "Online",
-				Description:         "A wellness workshop open to all employees.",
-				PublishTime:         now.Add(25 * 24 * time.Hour),
-				StartTime:           now.Add(45 * 24 * time.Hour),
-				EndTime:             now.Add(45*24*time.Hour + 8*time.Hour),
-				ApplyDeadline:       now.Add(45*24*time.Hour + 4*time.Hour),
-				Status:              "published",
-				RegionRestriction:   nil,
-				MaxTicketsPerPerson: 4,
-				CreatedBy:           managerID,
+				Title: "員工家庭日 — 六福村主題樂園", Venue: "六福村主題樂園",
+				Description:         "一年一度的員工家庭日！費用全額補助。",
+				StartTime:           now.Add(45 * 24 * time.Hour), EndTime: now.Add(45*24*time.Hour + 8*time.Hour),
+				ApplyDeadline: now.Add(30 * 24 * time.Hour), Status: "published",
+				RegionRestriction: nil, MaxTicketsPerPerson: 4, CreatedBy: managerID,
 			},
-			types: []model.TicketType{
-				{Name: "Workshop Seat", TotalQuota: 200, Remaining: 200},
-			},
+			types: []model.TicketType{{Name: "員工票（含眷屬 3 人）", TotalQuota: 200, Remaining: 200}},
 		},
 		{
 			event: model.Event{
-				Title:               "AI Tech Talk",
-				Venue:               "Hsinchu Auditorium B1",
-				Description:         "Internal AI sharing session.",
-				PublishTime:         now.Add(3 * 24 * time.Hour),
-				StartTime:           now.Add(15 * 24 * time.Hour),
-				EndTime:             now.Add(15*24*time.Hour + 4*time.Hour),
-				ApplyDeadline:       now.Add(15*24*time.Hour + 2*time.Hour),
-				Status:              "draft",
-				RegionRestriction:   nil,
-				MaxTicketsPerPerson: 1,
-				CreatedBy:           managerID,
+				Title: "AI 技能提升講座", Venue: "台積電研發大樓 B1 大講堂",
+				Description:         "業界專家分享 AI 工具應用。",
+				StartTime:           now.Add(15 * 24 * time.Hour), EndTime: now.Add(15*24*time.Hour + 4*time.Hour),
+				ApplyDeadline: now.Add(7 * 24 * time.Hour), Status: "draft",
+				RegionRestriction: nil, MaxTicketsPerPerson: 1, CreatedBy: managerID,
 			},
-			types: []model.TicketType{
-				{Name: "Standard", TotalQuota: 300, Remaining: 300},
-			},
+			types: []model.TicketType{{Name: "入場票", TotalQuota: 300, Remaining: 300}},
 		},
 	}
 
@@ -109,8 +84,8 @@ func SeedDemoData(db *gorm.DB) {
 	}
 
 	fmt.Println("Seed complete!")
-	fmt.Println("   MGR001 / password  -> event_manager")
-	fmt.Println("   EMP001 / password  -> employee (Tainan)")
-	fmt.Println("   EMP002 / password  -> employee (Hsinchu)")
-	fmt.Println("   HR001  / password  -> hr")
+	fmt.Println("   MGR001 / password  → event_manager")
+	fmt.Println("   EMP001 / password  → employee (台南廠)")
+	fmt.Println("   EMP002 / password  → employee (新竹廠)")
+	fmt.Println("   HR001  / password  → hr")
 }

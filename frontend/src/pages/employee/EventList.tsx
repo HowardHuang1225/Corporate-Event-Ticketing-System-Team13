@@ -67,7 +67,7 @@ export default function EventList() {
                 <span><MapPin size={13} /> {event.venue}</span>
                 <span><Calendar size={13} /> {fmt(event.start_time)}</span>
                 <span><Clock size={13} /> 截止：{fmt(event.apply_deadline)}</span>
-                {event.region_restriction && <span><Users size={13} /> 限 {event.region_restriction}</span>}
+                {event.region_restriction && <span><Users size={13} />{event.region_restriction}</span>}
               </div>
               <div className="event-card-footer">
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

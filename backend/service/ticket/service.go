@@ -162,15 +162,7 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 				return apperror.New(400, "APPLY_DEADLINE_PASSED", "Application deadline has passed")
 			}
 
-			if event.RegionRestriction != nil && *event.RegionRestriction != "" {
-				var user model.User
-				if err := tx.First(&user, "id = ?", userID.String()).Error; err != nil {
-					return err
-				}
-				if user.Region != *event.RegionRestriction {
-					return apperror.Forbidden("NOT_ELIGIBLE", "You are not eligible due to region restriction (restricted to "+*event.RegionRestriction+")")
-				}
-			}
+
 
 			var issuedCount int64
 			if err := tx.Model(&model.Ticket{}).
@@ -211,7 +203,7 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 				EventID:        eventID,
 				TicketTypeID:   ticketTypeID,
 				Quantity:       req.Quantity,
-				Status:         "pending",
+				Status:         "approved",
 				IdempotencyKey: req.IdempotencyKey,
 			}
 
@@ -234,6 +226,20 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 					return err
 				}
 				return nil
+			}
+
+			for i := 0; i < app.Quantity; i++ {
+				ticket := model.Ticket{
+					ApplicationID: app.ID,
+					UserID:        app.UserID,
+					EventID:       app.EventID,
+					TicketTypeID:  app.TicketTypeID,
+					QRToken:       uuid.New().String(),
+					ExpiresAt:     event.EndTime,
+				}
+				if err := tx.Create(&ticket).Error; err != nil {
+					return err
+				}
 			}
 
 			createdApp = app
