@@ -17,6 +17,23 @@ const EMPTY_FORM = {
   ticket_types: [{ name: '一般票', total_quota: 100 }],
 }
 
+function validatePublishTimeline(event: any, publishAt = new Date()): string | null {
+  const applyDeadline = new Date(event.apply_deadline)
+  const startTime = new Date(event.start_time)
+  const endTime = new Date(event.end_time)
+
+  if (!(publishAt < applyDeadline)) {
+    return '發布時間必須早於申請截止時間'
+  }
+  if (applyDeadline > startTime) {
+    return '申請截止時間必須早於或等於活動開始時間'
+  }
+  if (!(startTime < endTime)) {
+    return '活動結束時間必須晚於開始時間'
+  }
+  return null
+}
+
 export default function EventManage() {
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -106,7 +123,14 @@ export default function EventManage() {
                 <td>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {e.status === 'draft' && (
-                      <button className="btn btn-success btn-sm" onClick={() => publishMutation.mutate(e.id)}>
+                      <button className="btn btn-success btn-sm" onClick={() => {
+                        const error = validatePublishTimeline(e)
+                        if (error) {
+                          toast.error(error)
+                          return
+                        }
+                        publishMutation.mutate(e.id)
+                      }}>
                         <Globe size={13} /> 發布
                       </button>
                     )}

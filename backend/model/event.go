@@ -36,9 +36,11 @@ func (e *Event) BeforeCreate(tx *gorm.DB) error {
 }
 
 // AfterFind 會在從資料庫讀取資料後執行
-// 如果活動狀態為 'published' 但截止時間已過，自動將狀態視為 'closed'
 func (e *Event) AfterFind(tx *gorm.DB) (err error) {
-	if e.Status == "published" && !e.ApplyDeadline.IsZero() && time.Now().After(e.ApplyDeadline) {
+	now := time.Now()
+	if (e.Status == "published" || e.Status == "closed") && !e.EndTime.IsZero() && now.After(e.EndTime) {
+		e.Status = "ended"
+	} else if e.Status == "published" && !e.ApplyDeadline.IsZero() && now.After(e.ApplyDeadline) {
 		e.Status = "closed"
 	}
 	return nil
