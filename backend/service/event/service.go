@@ -195,8 +195,8 @@ func validateTimeline(publishTime, startTime, applyDeadline, endTime time.Time) 
 	if publishTime.IsZero() || startTime.IsZero() || applyDeadline.IsZero() || endTime.IsZero() {
 		return apperror.Validation("publish_time, start_time, apply_deadline, and end_time are required")
 	}
-	if publishTime.After(startTime) || !startTime.Before(applyDeadline) || applyDeadline.After(endTime) {
-		return apperror.Validation("publish_time <= start_time < apply_deadline <= end_time")
+	if publishTime.After(startTime) || publishTime.After(applyDeadline) || startTime.After(endTime) || applyDeadline.After(endTime) {
+		return apperror.Validation("publish_time <= (start_time, apply_deadline) <= end_time")
 	}
 	return nil
 }
