@@ -43,6 +43,64 @@ docker-compose up --build
 - [Backend 技術說明 (Go/Gin/GORM)](docs/backend_spec.md)
 - [Frontend 技術說明 (React/TS/Vite)](docs/frontend_spec.md)
 
+### 目錄職責
+
+```text
+.
+├── api/                  # OpenAPI 規格與前後端 API contract
+├── backend/              # Go 後端服務，負責 API、資料存取、商業邏輯與背景初始化
+├── docs/                 # 系統設計、前後端規格與開發文件
+├── frontend/             # React + TypeScript 前端應用
+├── docker-compose.yml    # 本地整合啟動 Postgres、Redis、後端與前端
+├── .env.example          # 本地環境變數範本
+└── *_test.go             # 專案層級測試檔與共用測試輔助
+```
+
+### Backend 架構
+
+```text
+backend/
+├── bootstrap/            # Demo seed data 與啟動時初始化流程
+├── config/               # 環境變數與服務設定讀取
+├── database/             # GORM 連線、AutoMigrate 與資料庫 schema 補遷移
+├── handler/              # Gin HTTP handler，負責 request binding、身份 context 與 response
+│   ├── auth/             # 登入與身份驗證 API
+│   ├── employee/         # 員工活動瀏覽、報名、票券 API
+│   ├── hr/               # HR 報表 API
+│   ├── manager/          # 管理員活動、申請審核、核銷 API
+│   └── shared/           # handler 共用 response/context 工具
+├── middleware/           # JWT 驗證、角色權限等 HTTP middleware
+├── model/                # GORM model 與 JSON 資料結構
+├── pkg/                  # JWT、Redis、通用工具等基礎元件
+├── repository/           # 資料存取層，封裝 DB query 與 persistence
+├── routes/               # API route 註冊與角色權限掛載
+├── service/              # 核心商業邏輯，例如活動時間規則、報名 eligibility、票券流程
+└── main.go               # 後端服務入口，初始化設定、DB、Redis、router 與 graceful shutdown
+```
+
+### Frontend 架構
+
+```text
+frontend/
+├── public/               # 靜態公開資源，例如 favicon、sprite icon
+├── src/
+│   ├── api/              # Axios client 與 API baseURL/JWT interceptor
+│   ├── assets/           # 前端使用的圖片與靜態素材
+│   ├── components/       # 共用 UI 元件，例如 Layout、ProtectedRoute
+│   ├── contexts/         # React context，例如登入狀態與使用者資訊
+│   ├── pages/            # 依角色與功能切分的頁面
+│   │   ├── employee/     # 員工活動列表、活動詳情、個人票券
+│   │   ├── hr/           # HR 報表頁
+│   │   └── manager/      # 管理員活動管理、申請審核、現場核銷
+│   ├── App.tsx           # 前端路由與主要應用組裝
+│   ├── App.css           # 應用層樣式
+│   ├── index.css         # 全域樣式與 CSS variables
+│   └── main.tsx          # React entry point
+├── nginx.conf            # Docker production image 使用的 Nginx 設定
+├── vite.config.ts        # Vite dev server、React plugin 與 API proxy
+└── package.json          # 前端 scripts 與 npm dependency
+```
+
 ---
 
 ## 開發環境手動啟動
@@ -104,7 +162,7 @@ npm run dev
 ```bash
 docker-compose up --build
 
-cd backedn
+cd backend
 go test ./handler // 跑handler底下所有測試
 go test ./handler -run TestEvent // 跑event_test.go
 go test ./handler -run TestAuth // 跑auth_test.go
