@@ -12,7 +12,7 @@ function StatusBadge({ status }: { status: EventStatus }) {
 
 const EMPTY_FORM = {
   title: '', description: '', venue: '',
-  start_time: '', end_time: '', apply_deadline: '',
+  publish_time: '', start_time: '', apply_deadline: '', end_time: '',
   region_restriction: '', max_tickets_per_person: 1,
   ticket_types: [{ name: '一般票', total_quota: 100 }],
 }
@@ -70,9 +70,10 @@ export default function EventManage() {
   const handleCreate = () => {
     const payload = {
       ...form,
+      publish_time: form.publish_time ? new Date(form.publish_time).toISOString() : '',
       start_time: form.start_time ? new Date(form.start_time).toISOString() : '',
-      end_time: form.end_time ? new Date(form.end_time).toISOString() : '',
       apply_deadline: form.apply_deadline ? new Date(form.apply_deadline).toISOString() : '',
+      end_time: form.end_time ? new Date(form.end_time).toISOString() : '',
       region_restriction: form.region_restriction || null,
       ticket_types: form.ticket_types.map(tt => ({ ...tt, total_quota: Number(tt.total_quota) })),
     }
@@ -102,13 +103,14 @@ export default function EventManage() {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>活動名稱</th><th>地點</th><th>申請截止</th><th>票種</th><th>狀態</th><th>操作</th></tr>
+            <tr><th>活動名稱</th><th>地點</th><th>預計發布</th><th>申請截止</th><th>票種</th><th>狀態</th><th>操作</th></tr>
           </thead>
           <tbody>
             {events.map((e: any) => (
               <tr key={e.id}>
                 <td style={{ fontWeight: 500 }}>{e.title}</td>
                 <td style={{ color: 'var(--text-secondary)' }}>{e.venue}</td>
+                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(e.publish_time).toLocaleDateString('zh-TW')}</td>
                 <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(e.apply_deadline).toLocaleDateString('zh-TW')}</td>
                 <td>
                   {(e.ticket_types ?? []).map((tt: any) => (
@@ -167,12 +169,12 @@ export default function EventManage() {
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">開始時間 *</label>
-                <input type="datetime-local" className="form-input" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} />
+                <label className="form-label">預計發布時間 *</label>
+                <input type="datetime-local" className="form-input" value={form.publish_time} onChange={e => setForm(f => ({ ...f, publish_time: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">結束時間 *</label>
-                <input type="datetime-local" className="form-input" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} />
+                <label className="form-label">開始時間 *</label>
+                <input type="datetime-local" className="form-input" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} />
               </div>
             </div>
             <div className="form-row">
@@ -180,6 +182,12 @@ export default function EventManage() {
                 <label className="form-label">申請截止時間 *</label>
                 <input type="datetime-local" className="form-input" value={form.apply_deadline} onChange={e => setForm(f => ({ ...f, apply_deadline: e.target.value }))} />
               </div>
+              <div className="form-group">
+                <label className="form-label">結束時間 *</label>
+                <input type="datetime-local" className="form-input" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
               <div className="form-group">
                 <label className="form-label">每人票數上限</label>
                 <input type="number" min={1} className="form-input" value={form.max_tickets_per_person} onChange={e => setForm(f => ({ ...f, max_tickets_per_person: Number(e.target.value) }))} />
