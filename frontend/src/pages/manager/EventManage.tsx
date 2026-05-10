@@ -196,8 +196,8 @@ export default function EventManage() {
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">地域限制（留空 = 不限）</label>
-              <input className="form-input" placeholder="例：台南廠" value={form.region_restriction} onChange={e => setForm(f => ({ ...f, region_restriction: e.target.value }))} />
+              <label className="form-label">活動地域（例如：台南、新竹，留空 = 不限）</label>
+              <input className="form-input" placeholder="例：台南" value={form.region_restriction} onChange={e => setForm(f => ({ ...f, region_restriction: e.target.value }))} />
             </div>
 
             <div className="divider" />

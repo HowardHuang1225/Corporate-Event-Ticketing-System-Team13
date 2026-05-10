@@ -165,18 +165,11 @@ func (s *Service) CheckEligibility(eventID string, userID uuid.UUID) (Eligibilit
 	if err != nil {
 		return Eligibility{}, apperror.NotFound("Event not found")
 	}
-	user, err := s.users.FindByID(userID)
-	if err != nil {
-		return Eligibility{}, apperror.NotFound("User not found")
-	}
 	if event.Status != "published" {
 		return Eligibility{Eligible: false, Reason: "Event is not accepting applications"}, nil
 	}
 	if time.Now().After(event.ApplyDeadline) {
 		return Eligibility{Eligible: false, Reason: "Application deadline has passed"}, nil
-	}
-	if event.RegionRestriction != nil && *event.RegionRestriction != "" && user.Region != *event.RegionRestriction {
-		return Eligibility{Eligible: false, Reason: "Region restriction does not match"}, nil
 	}
 	return Eligibility{Eligible: true}, nil
 }
