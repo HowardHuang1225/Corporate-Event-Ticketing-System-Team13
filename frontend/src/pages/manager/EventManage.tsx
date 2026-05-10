@@ -22,11 +22,13 @@ function validatePublishTimeline(event: any, publishAt = new Date()): string | n
   const startTime = new Date(event.start_time)
   const endTime = new Date(event.end_time)
 
+  console.log(applyDeadline)
+  console.log(startTime)
+  console.log(endTime)
+  console.log(publishAt)
+
   if (!(publishAt < applyDeadline)) {
     return '發布時間必須早於申請截止時間'
-  }
-  if (applyDeadline > startTime) {
-    return '申請截止時間必須早於或等於活動開始時間'
   }
   if (!(startTime < endTime)) {
     return '活動結束時間必須晚於開始時間'
