@@ -63,19 +63,17 @@ func ensureEventTimelineSchema(db *gorm.DB) error {
 		return err
 	}
 
+	// Drop old constraint to apply the updated time-proofing rule: publish_time <= (start_time, apply_deadline) <= end_time
+	_ = db.Exec("ALTER TABLE events DROP CONSTRAINT IF EXISTS chk_events_time_order")
+
 	return db.Exec(`
-		DO $$
-		BEGIN
-			IF NOT EXISTS (
-				SELECT 1
-				FROM pg_constraint
-				WHERE conname = 'chk_events_time_order'
-			) THEN
-				ALTER TABLE events
-				ADD CONSTRAINT chk_events_time_order
-				CHECK (publish_time <= start_time AND start_time < apply_deadline AND apply_deadline <= end_time)
-				NOT VALID;
-			END IF;
-		END $$;
+		ALTER TABLE events
+		ADD CONSTRAINT chk_events_time_order
+		CHECK (
+			publish_time <= start_time AND 
+			publish_time <= apply_deadline AND 
+			start_time <= end_time AND 
+			apply_deadline <= end_time
+		) NOT VALID;
 	`).Error
 }

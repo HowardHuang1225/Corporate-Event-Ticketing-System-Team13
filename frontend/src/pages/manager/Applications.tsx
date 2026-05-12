@@ -12,7 +12,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function Applications() {
   const qc = useQueryClient()
   const [eventFilter, setEventFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('pending')
+  const [statusFilter, setStatusFilter] = useState('')
   const [rejectModal, setRejectModal] = useState<{ id: string; name: string } | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 

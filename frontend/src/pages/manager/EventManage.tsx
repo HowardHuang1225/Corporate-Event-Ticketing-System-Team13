@@ -1,12 +1,20 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, XCircle, Globe } from 'lucide-react'
+import { Plus, XCircle, Globe, Edit, Trash2, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 
 type EventStatus = 'draft' | 'published' | 'closed' | 'ended'
-function StatusBadge({ status }: { status: EventStatus }) {
+function StatusBadge({ status, publishTime }: { status: EventStatus, publishTime?: string }) {
   const m: Record<string, string> = { draft: '草稿', published: '發布中', closed: '已截止', ended: '已結束' }
+  const isScheduled = status === 'draft' && publishTime && new Date(publishTime) > new Date()
+  
+  if (isScheduled) {
+    return <span className="badge badge-draft" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <Clock size={12} /> 排程中
+    </span>
+  }
+  
   return <span className={`badge badge-${status}`}>{m[status] ?? status}</span>
 }
 
@@ -22,11 +30,13 @@ function validatePublishTimeline(event: any, publishAt = new Date()): string | n
   const startTime = new Date(event.start_time)
   const endTime = new Date(event.end_time)
 
+  console.log(applyDeadline)
+  console.log(startTime)
+  console.log(endTime)
+  console.log(publishAt)
+
   if (!(publishAt < applyDeadline)) {
     return '發布時間必須早於申請截止時間'
-  }
-  if (applyDeadline > startTime) {
-    return '申請截止時間必須早於或等於活動開始時間'
   }
   if (!(startTime < endTime)) {
     return '活動結束時間必須晚於開始時間'
@@ -37,7 +47,15 @@ function validatePublishTimeline(event: any, publishAt = new Date()): string | n
 export default function EventManage() {
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
+
+  const formatToLocalDatetime = (isoString: string) => {
+    if (!isoString) return ''
+    const date = new Date(isoString)
+    if (isNaN(date.getTime())) return ''
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['events-manage'],
@@ -49,11 +67,34 @@ export default function EventManage() {
     onSuccess: () => {
       toast.success('活動建立成功！')
       setShowCreate(false)
+      setEditId(null)
       setForm({ ...EMPTY_FORM })
       qc.invalidateQueries({ queryKey: ['events-manage'] })
       qc.invalidateQueries({ queryKey: ['events'] })
     },
     onError: (err: any) => toast.error(err.response?.data?.error?.message ?? '建立失敗'),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => api.put(`/events/${id}`, payload),
+    onSuccess: () => {
+      toast.success('活動更新成功！')
+      setShowCreate(false)
+      setEditId(null)
+      setForm({ ...EMPTY_FORM })
+      qc.invalidateQueries({ queryKey: ['events-manage'] })
+      qc.invalidateQueries({ queryKey: ['events'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message ?? '更新失敗'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/events/${id}`),
+    onSuccess: () => {
+      toast.success('活動已刪除！')
+      qc.invalidateQueries({ queryKey: ['events-manage'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message ?? '刪除失敗'),
   })
 
   const publishMutation = useMutation({
@@ -67,7 +108,7 @@ export default function EventManage() {
     onSuccess: () => { toast.success('已截止報名'); qc.invalidateQueries({ queryKey: ['events-manage'] }) },
   })
 
-  const handleCreate = () => {
+  const handleSave = () => {
     const payload = {
       ...form,
       publish_time: form.publish_time ? new Date(form.publish_time).toISOString() : '',
@@ -77,7 +118,34 @@ export default function EventManage() {
       region_restriction: form.region_restriction || null,
       ticket_types: form.ticket_types.map(tt => ({ ...tt, total_quota: Number(tt.total_quota) })),
     }
-    createMutation.mutate(payload)
+    if (editId) {
+      updateMutation.mutate({ id: editId, payload })
+    } else {
+      createMutation.mutate(payload)
+    }
+  }
+
+  const handleEdit = (e: any) => {
+    setForm({
+      title: e.title || '',
+      description: e.description || '',
+      venue: e.venue || '',
+      publish_time: formatToLocalDatetime(e.publish_time),
+      start_time: formatToLocalDatetime(e.start_time),
+      apply_deadline: formatToLocalDatetime(e.apply_deadline),
+      end_time: formatToLocalDatetime(e.end_time),
+      region_restriction: e.region_restriction || '',
+      max_tickets_per_person: e.max_tickets_per_person || 1,
+      ticket_types: (e.ticket_types && e.ticket_types.length > 0) ? e.ticket_types.map((tt: any) => ({ name: tt.name, total_quota: tt.total_quota })) : [{ name: '一般票', total_quota: 100 }],
+    })
+    setEditId(e.id)
+    setShowCreate(true)
+  }
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('確定要刪除此草稿嗎？刪除後無法復原。')) {
+      deleteMutation.mutate(id)
+    }
   }
 
   const addTicketType = () => setForm(f => ({ ...f, ticket_types: [...f.ticket_types, { name: '', total_quota: 50 }] }))
@@ -95,7 +163,7 @@ export default function EventManage() {
           <h1 className="page-title">活動管理</h1>
           <p className="page-subtitle">建立、編輯、發布活動</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+        <button className="btn btn-primary" onClick={() => { setEditId(null); setForm({ ...EMPTY_FORM }); setShowCreate(true); }}>
           <Plus size={16} /> 建立新活動
         </button>
       </div>
@@ -119,20 +187,28 @@ export default function EventManage() {
                     </div>
                   ))}
                 </td>
-                <td><StatusBadge status={e.status} /></td>
+                <td><StatusBadge status={e.status} publishTime={e.publish_time} /></td>
                 <td>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {e.status === 'draft' && (
-                      <button className="btn btn-success btn-sm" onClick={() => {
-                        const error = validatePublishTimeline(e)
-                        if (error) {
-                          toast.error(error)
-                          return
-                        }
-                        publishMutation.mutate(e.id)
-                      }}>
-                        <Globe size={13} /> 發布
-                      </button>
+                      <>
+                        <button className="btn btn-success btn-sm" onClick={() => {
+                          const error = validatePublishTimeline(e)
+                          if (error) {
+                            toast.error(error)
+                            return
+                          }
+                          publishMutation.mutate(e.id)
+                        }}>
+                          <Globe size={13} /> 發布
+                        </button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(e)}>
+                          <Edit size={13} /> 編輯
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(e.id)}>
+                          <Trash2 size={13} /> 刪除
+                        </button>
+                      </>
                     )}
                     {e.status === 'published' && (
                       <button className="btn btn-secondary btn-sm" onClick={() => closeMutation.mutate(e.id)}>
@@ -151,7 +227,7 @@ export default function EventManage() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
           <div className="modal" style={{ maxWidth: 640 }}>
             <div className="modal-header">
-              <span className="modal-title">建立新活動</span>
+              <span className="modal-title">{editId ? '編輯活動' : '建立新活動'}</span>
               <button className="modal-close" onClick={() => setShowCreate(false)}>✕</button>
             </div>
 
@@ -194,8 +270,8 @@ export default function EventManage() {
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">地域限制（留空 = 不限）</label>
-              <input className="form-input" placeholder="例：台南廠" value={form.region_restriction} onChange={e => setForm(f => ({ ...f, region_restriction: e.target.value }))} />
+              <label className="form-label">活動地域（例如：台南、新竹，留空 = 不限）</label>
+              <input className="form-input" placeholder="例：台南" value={form.region_restriction} onChange={e => setForm(f => ({ ...f, region_restriction: e.target.value }))} />
             </div>
 
             <div className="divider" />
@@ -219,8 +295,8 @@ export default function EventManage() {
 
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>取消</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={createMutation.isPending}>
-                {createMutation.isPending ? '建立中…' : '建立活動（儲存為草稿）'}
+              <button className="btn btn-primary" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+                {createMutation.isPending || updateMutation.isPending ? '儲存中…' : '儲存草稿'}
               </button>
             </div>
           </div>
