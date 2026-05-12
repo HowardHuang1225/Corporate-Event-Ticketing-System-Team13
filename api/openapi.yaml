@@ -54,6 +54,12 @@ paths:
         - Events
       security:
         - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
       responses:
         "201":
           description: Created
@@ -98,6 +104,56 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    CreateEventRequest:
+      type: object
+      required:
+        - title
+        - venue
+        - publish_time
+        - start_time
+        - apply_deadline
+        - end_time
+        - ticket_types
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        venue:
+          type: string
+        publish_time:
+          type: string
+          format: date-time
+          description: Must satisfy publish_time <= start_time < apply_deadline <= end_time.
+        start_time:
+          type: string
+          format: date-time
+        apply_deadline:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        region_restriction:
+          type: string
+          nullable: true
+        max_tickets_per_person:
+          type: integer
+          minimum: 1
+        ticket_types:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - name
+              - total_quota
+            properties:
+              name:
+                type: string
+              total_quota:
+                type: integer
+                minimum: 1
     AuthResponse:
       type: object
       properties:

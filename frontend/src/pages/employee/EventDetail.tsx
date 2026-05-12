@@ -30,7 +30,7 @@ export default function EventDetail() {
   const applyMutation = useMutation({
     mutationFn: (payload: any) => api.post('/applications', payload),
     onSuccess: () => {
-      toast.success('申請成功！等待管理員審核')
+      toast.success('搶票成功！已為您自動發票')
       setShowModal(false)
       qc.invalidateQueries({ queryKey: ['event', id] })
     },
@@ -56,6 +56,21 @@ export default function EventDetail() {
   const canApply = user?.role === 'employee' && event.status === 'published' && new Date(event.apply_deadline) > new Date()
   const maxQ = event.max_tickets_per_person ?? 1
   const selectedTT = (event.ticket_types ?? []).find((tt: any) => tt.id === selectedType)
+  const isRegionMismatch = (() => {
+    if (!event.region_restriction || !user || !user.region) return false
+    const eventReg = event.region_restriction.toLowerCase()
+    const userReg = user.region.toLowerCase()
+    if (userReg.includes(eventReg) || eventReg.includes(userReg)) return false
+    const tainanKeywords = ['tainan', '台南']
+    const hsinchuKeywords = ['hsinchu', '新竹']
+    const isUserTainan = tainanKeywords.some(k => userReg.includes(k))
+    const isEventTainan = tainanKeywords.some(k => eventReg.includes(k))
+    if (isUserTainan && isEventTainan) return false
+    const isUserHsinchu = hsinchuKeywords.some(k => userReg.includes(k))
+    const isEventHsinchu = hsinchuKeywords.some(k => eventReg.includes(k))
+    if (isUserHsinchu && isEventHsinchu) return false
+    return true
+  })()
 
   return (
     <div>
@@ -66,7 +81,7 @@ export default function EventDetail() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>{event.title}</h1>
-          <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : '已截止'}</span>
+          <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : event.status === 'ended' ? '已結束' : '已截止'}</span>
         </div>
         <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 20 }}>{event.description}</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -74,7 +89,7 @@ export default function EventDetail() {
             { icon: <MapPin size={16} />, label: '地點', val: event.venue },
             { icon: <Calendar size={16} />, label: '活動時間', val: `${fmt(event.start_time)} — ${fmt(event.end_time)}` },
             { icon: <Clock size={16} />, label: '申請截止', val: fmt(event.apply_deadline) },
-            { icon: <Users size={16} />, label: '地域限制', val: event.region_restriction ?? '不限制' },
+            { icon: <Users size={16} />, label: '活動地域', val: event.region_restriction ?? '不限制' },
             { icon: <Ticket size={16} />, label: '每人票數上限', val: `${event.max_tickets_per_person} 張` },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -87,6 +102,26 @@ export default function EventDetail() {
           ))}
         </div>
       </div>
+
+      {isRegionMismatch && (
+        <div style={{
+          background: 'var(--warning-light)',
+          border: '1px solid var(--warning)',
+          color: 'var(--warning)',
+          padding: '12px 16px',
+          borderRadius: 12,
+          marginBottom: 20,
+          fontSize: 14,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+          <span>⚠️</span>
+          <div>
+            <strong>地域提醒：</strong>本活動主要地域為「{event.region_restriction}」（您的所屬廠區為「{user?.region || '未設定'}」），但您仍可以報名搶票。
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>可選票種</h2>
@@ -123,6 +158,19 @@ export default function EventDetail() {
               <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
             </div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>{event.title}</p>
+            {isRegionMismatch && (
+              <div style={{
+                background: 'var(--warning-light)',
+                border: '1px solid var(--warning)',
+                color: 'var(--warning)',
+                padding: '10px 14px',
+                borderRadius: 8,
+                marginBottom: 16,
+                fontSize: 13,
+              }}>
+                ⚠️ 提醒：您的所屬廠區（{user?.region || '未設定'}）與本活動主要地域（{event.region_restriction}）不同，但仍可繼續報名。
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">票種</label>
               <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid var(--border)' }}>
