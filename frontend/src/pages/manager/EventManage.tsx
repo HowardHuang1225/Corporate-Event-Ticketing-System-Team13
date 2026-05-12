@@ -1,12 +1,20 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, XCircle, Globe, Edit, Trash2 } from 'lucide-react'
+import { Plus, XCircle, Globe, Edit, Trash2, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../api/client'
 
 type EventStatus = 'draft' | 'published' | 'closed' | 'ended'
-function StatusBadge({ status }: { status: EventStatus }) {
+function StatusBadge({ status, publishTime }: { status: EventStatus, publishTime?: string }) {
   const m: Record<string, string> = { draft: '草稿', published: '發布中', closed: '已截止', ended: '已結束' }
+  const isScheduled = status === 'draft' && publishTime && new Date(publishTime) > new Date()
+  
+  if (isScheduled) {
+    return <span className="badge badge-draft" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <Clock size={12} /> 排程中
+    </span>
+  }
+  
   return <span className={`badge badge-${status}`}>{m[status] ?? status}</span>
 }
 
@@ -179,7 +187,7 @@ export default function EventManage() {
                     </div>
                   ))}
                 </td>
-                <td><StatusBadge status={e.status} /></td>
+                <td><StatusBadge status={e.status} publishTime={e.publish_time} /></td>
                 <td>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {e.status === 'draft' && (
