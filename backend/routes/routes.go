@@ -61,6 +61,7 @@ func Register(router *gin.Engine, deps Dependencies) {
 	api.GET("/events/:id/eligibility", middleware.RequireRole("employee"), employeeHandler.CheckEligibility)
 	api.POST("/events", middleware.RequireRole("event_manager"), managerHandler.CreateEvent)
 	api.PUT("/events/:id", middleware.RequireRole("event_manager"), managerHandler.UpdateEvent)
+	api.DELETE("/events/:id", middleware.RequireRole("event_manager"), managerHandler.DeleteEvent)
 	api.PATCH("/events/:id/publish", middleware.RequireRole("event_manager"), managerHandler.PublishEvent)
 	api.PATCH("/events/:id/close", middleware.RequireRole("event_manager"), managerHandler.CloseEvent)
 

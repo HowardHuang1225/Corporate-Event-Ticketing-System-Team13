@@ -41,17 +41,26 @@ func (h *Handler) CreateEvent(c *gin.Context) {
 }
 
 func (h *Handler) UpdateEvent(c *gin.Context) {
-	var updates map[string]any
-	if err := c.ShouldBindJSON(&updates); err != nil {
+	var req eventsvc.CreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", err.Error()))
 		return
 	}
-	event, err := h.events.Update(c.Param("id"), updates)
+	event, err := h.events.UpdateDraft(c.Param("id"), req)
 	if err != nil {
 		shared.WriteError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, shared.OK(event))
+}
+
+func (h *Handler) DeleteEvent(c *gin.Context) {
+	err := h.events.DeleteDraft(c.Param("id"))
+	if err != nil {
+		shared.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, shared.OK(nil))
 }
 
 func (h *Handler) PublishEvent(c *gin.Context) {

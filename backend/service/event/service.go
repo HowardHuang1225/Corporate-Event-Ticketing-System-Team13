@@ -117,20 +117,93 @@ func (s *Service) Create(req CreateRequest, creatorID uuid.UUID) (model.Event, e
 	return event, nil
 }
 
-func (s *Service) Update(id string, updates map[string]any) (model.Event, error) {
+func (s *Service) UpdateDraft(id string, req CreateRequest) (model.Event, error) {
+	if err := validateTimeline(req.PublishTime, req.StartTime, req.ApplyDeadline, req.EndTime); err != nil {
+		return model.Event{}, err
+	}
+
+	maxTickets := req.MaxTicketsPerPerson
+	if maxTickets == 0 {
+		maxTickets = 1
+	}
+
 	var event model.Event
-	if err := s.db.First(&event, "id = ?", id).Error; err != nil {
+	if err := s.db.Preload("TicketTypes").First(&event, "id = ?", id).Error; err != nil {
 		return model.Event{}, apperror.NotFound("Event not found")
 	}
 
-	delete(updates, "id")
-	delete(updates, "created_by")
-	delete(updates, "status")
-	if err := s.db.Model(&event).Updates(updates).Error; err != nil {
+	if event.Status != "draft" {
+		return model.Event{}, apperror.New(400, "INVALID_STATUS", "Only draft events can be edited")
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Update Event
+		event.Title = req.Title
+		event.Description = req.Description
+		event.Venue = req.Venue
+		event.PublishTime = req.PublishTime
+		event.StartTime = req.StartTime
+		event.EndTime = req.EndTime
+		event.ApplyDeadline = req.ApplyDeadline
+		event.RegionRestriction = req.RegionRestriction
+		event.MaxTicketsPerPerson = maxTickets
+		if err := tx.Save(&event).Error; err != nil {
+			return err
+		}
+
+		// Update TicketTypes: delete existing and create new ones
+		if err := tx.Where("event_id = ?", event.ID).Delete(&model.TicketType{}).Error; err != nil {
+			return err
+		}
+
+		for _, ticketType := range req.TicketTypes {
+			record := model.TicketType{
+				EventID:    event.ID,
+				Name:       ticketType.Name,
+				TotalQuota: ticketType.TotalQuota,
+				Remaining:  ticketType.TotalQuota,
+			}
+			if err := tx.Create(&record).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
 		return model.Event{}, apperror.Internal("Failed to update event")
+	}
+
+	if err := s.db.Preload("TicketTypes").First(&event, event.ID).Error; err != nil {
+		return model.Event{}, apperror.Internal("Failed to load updated event")
 	}
 	s.invalidateInventoryCache(context.Background(), event.ID)
 	return event, nil
+}
+
+func (s *Service) DeleteDraft(id string) error {
+	var event model.Event
+	if err := s.db.First(&event, "id = ?", id).Error; err != nil {
+		return apperror.NotFound("Event not found")
+	}
+	if event.Status != "draft" {
+		return apperror.New(400, "INVALID_STATUS", "Only draft events can be deleted")
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("event_id = ?", event.ID).Delete(&model.TicketType{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&event).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return apperror.Internal("Failed to delete event")
+	}
+	return nil
 }
 
 func (s *Service) Publish(id string) (model.Event, error) {
