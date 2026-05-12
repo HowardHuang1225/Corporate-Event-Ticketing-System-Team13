@@ -13,3 +13,6 @@ vendor/
 # OS files
 .DS_Store
 Thumbs.db
+
+# load-test logs
+load-test/*.json
