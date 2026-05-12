@@ -93,6 +93,22 @@ func TestValidateTimeline(t *testing.T) {
 			wantErr:     true,
 		},
 		{
+			name:        "rejects missing publish time",
+			publishTime: time.Time{},
+			startTime:   now.Add(time.Hour),
+			deadline:    now.Add(2 * time.Hour),
+			endTime:     now.Add(3 * time.Hour),
+			wantErr:     true,
+		},
+		{
+			name:        "rejects apply deadline before start time",
+			publishTime: now,
+			startTime:   now.Add(2 * time.Hour),
+			deadline:    now.Add(time.Hour),
+			endTime:     now.Add(3 * time.Hour),
+			wantErr:     true,
+		},
+		{
 			name:        "rejects start time equal to apply deadline",
 			publishTime: now,
 			startTime:   now.Add(time.Hour),
@@ -108,10 +124,19 @@ func TestValidateTimeline(t *testing.T) {
 			endTime:     now.Add(2 * time.Hour),
 			wantErr:     true,
 		},
+		{
+			name:        "rejects end time before start time and apply deadline",
+			publishTime: now,
+			startTime:   now.Add(2 * time.Hour),
+			deadline:    now.Add(3 * time.Hour),
+			endTime:     now.Add(time.Hour),
+			wantErr:     true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("checking validateTimeline case: %s", tt.name)
 			err := validateTimeline(tt.publishTime, tt.startTime, tt.deadline, tt.endTime)
 			if tt.wantErr {
 				if err == nil {
