@@ -158,13 +158,12 @@ npm run dev
 ---
 
 ## Unit Test
+GO 的所有測試檔案都是XXX_test.go，並且在執行go test的時候會跑路徑底下XXX_test.go中所有Test開頭的function
 
 ```bash
 docker-compose up --build
 
 cd backend
-go test ./handler // 跑handler底下所有測試
-go test ./handler -run TestEvent // 跑event_test.go
-go test ./handler -run TestAuth // 跑auth_test.go
-go test ./handler -run TestTicket // 跑ticket_test.go
+go test ${path}  // 跑某個資料夾底下的所有測試
+go test -run Test...  // 跑某個function name為Test...的測試
 ```
