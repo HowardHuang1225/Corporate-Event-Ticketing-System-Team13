@@ -16,6 +16,7 @@ import (
 	"ticketing-system/backend/database"
 	"ticketing-system/backend/pkg"
 	"ticketing-system/backend/routes"
+	"ticketing-system/backend/scheduler"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,7 @@ func main() {
 	db := database.Connect(cfg.DatabaseURL)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
 	bootstrap.SeedDemoData(db)
+	scheduler.StartPublishingWorker(db)
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
