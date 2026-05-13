@@ -30,7 +30,7 @@ func main() {
 	db := database.Connect(cfg.DatabaseURL)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
 	bootstrap.SeedDemoData(db)
-	scheduler.StartPublishingWorker(db)
+	scheduler.StartEventSchedulers(db, redisClient)
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
