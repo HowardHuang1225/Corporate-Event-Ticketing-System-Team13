@@ -14,7 +14,7 @@ import (
 func TestManagerTicketGeneration(t *testing.T) {
 	tasks := []utils.Task{
 		{
-			Description: "generated tickets include UUID QR tokens",
+			Description: "測試核准申請後產生的票券包含 UUID QR token",
 			Target:      GeneratedTicketsHaveUUIDQRToken,
 		},
 	}
@@ -26,7 +26,7 @@ func GeneratedTicketsHaveUUIDQRToken(t *testing.T, errs *utils.Errors) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	utils.PrintTestProgress("Ticket generation: approving a pending application should create tickets with QR code UUID tokens.\n")
+	utils.PrintTestProgress("票券產生：核准 pending 申請後，應建立帶有 QR code UUID token 的票券。\n")
 	utils.PrintTestProgress("==================================================\n")
 
 	tx, users, cleanup, err := setupManagerTicketLifecycleTest(t)
@@ -72,10 +72,10 @@ func GeneratedTicketsHaveUUIDQRToken(t *testing.T, errs *utils.Errors) {
 	for index, ticket := range body.Data.Tickets {
 		ticket := ticket
 		index := index
-		t.Run(fmt.Sprintf("generated-ticket-%d", index+1), func(t *testing.T) {
-			progress := fmt.Sprintf("check generated ticket %d identifiers", index+1)
-			t.Logf("Checking generated ticket %d has a UUID QR token", index+1)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", progress))
+		t.Run(fmt.Sprintf("產生票券-%d", index+1), func(t *testing.T) {
+			progress := fmt.Sprintf("檢查第 %d 張產生票券的識別資料。", index+1)
+			t.Logf("子測試：%s", progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", progress))
 
 			if ticket.ID == uuid.Nil {
 				errs.Add(progress, "expected ticket id to be a non-empty UUID")

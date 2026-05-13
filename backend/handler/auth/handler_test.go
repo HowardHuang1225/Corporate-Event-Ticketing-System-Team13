@@ -65,42 +65,43 @@ func LoginDemoAccounts(t *testing.T, errs *utils.Errors) {
 		progress   string
 	}{
 		{
-			name:       "manager",
+			name:       "活動管理者帳號",
 			employeeID: "MGR001",
 			password:   "password",
 			wantRole:   "event_manager",
 			wantRegion: "台南廠",
-			progress:   "test if the manager account can log in and receives the correct role and region.",
+			progress:   "活動管理者帳號登入成功後，應取得正確角色、廠區與 JWT claims。",
 		},
 		{
-			name:       "employee tainan",
+			name:       "台南員工帳號",
 			employeeID: "EMP001",
 			password:   "password",
 			wantRole:   "employee",
 			wantRegion: "台南廠",
-			progress:   "test if the Tainan employee account can log in and receives the correct role and region.",
+			progress:   "台南員工帳號登入成功後，應取得正確角色、廠區與 JWT claims。",
 		},
 		{
-			name:       "employee hsinchu",
+			name:       "新竹員工帳號",
 			employeeID: "EMP002",
 			password:   "password",
 			wantRole:   "employee",
 			wantRegion: "新竹廠",
-			progress:   "test if the Hsinchu employee account can log in and receives the correct role and region.",
+			progress:   "新竹員工帳號登入成功後，應取得正確角色、廠區與 JWT claims。",
 		},
 		{
-			name:       "hr",
+			name:       "人資帳號",
 			employeeID: "HR001",
 			password:   "password",
 			wantRole:   "hr",
 			wantRegion: "台南廠",
-			progress:   "test if the HR account can log in and receives the correct role and region.",
+			progress:   "人資帳號登入成功後，應取得正確角色、廠區與 JWT claims。",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// printTestProgress(tt.progress + "\n")
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			resp := utils.PerformLogin(router, tt.employeeID, tt.password)
 
@@ -187,22 +188,23 @@ func LoginInvalidCredentials(t *testing.T, errs *utils.Errors) {
 		progress   string
 	}{
 		{
-			name:       "wrong employee id",
+			name:       "不存在的員工編號",
 			employeeID: "UNKNOWN",
 			password:   "password",
-			progress:   "test if an unknown employee ID is rejected with the correct error code.",
+			progress:   "不存在的員工編號登入時，應回傳正確錯誤碼。",
 		},
 		{
-			name:       "wrong password",
+			name:       "密碼錯誤",
 			employeeID: "EMP001",
 			password:   "wrong-password",
-			progress:   "test if a valid employee ID with an incorrect password is rejected with the correct error code.",
+			progress:   "合法員工編號搭配錯誤密碼登入時，應回傳正確錯誤碼。",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// printTestProgress(tt.progress + "\n")
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			resp := utils.PerformLogin(router, tt.employeeID, tt.password)
 

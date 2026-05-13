@@ -83,8 +83,8 @@ func CheckEventEligibilityReturnsExpectedDecisions(t *testing.T, errs *utils.Err
 	router := newEmployeeEventRouter(tx, users.Employee, "employee")
 	for _, tt := range fixtures {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查活動報名資格：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			event, err := seedEmployeeEligibilityEvent(tx, users.Manager, tt.status, tt.region, tt.deadline)
 			if err != nil {

@@ -81,8 +81,8 @@ func ReviewApplicationRoutesProcessPendingApplications(t *testing.T, errs *utils
 
 	for _, tt := range reviewTests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查審核申請流程：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			_, ticketType, app, err := seedManagerApplicationFixture(tx, users, "pending", tt.quantity, tt.remaining)
 			if err != nil {
@@ -205,8 +205,8 @@ func ReviewApplicationRoutesRejectAlreadyProcessedApplications(t *testing.T, err
 
 	for _, tt := range reviewTests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查重複審核防護：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			_, ticketType, app, err := seedManagerApplicationFixture(tx, users, tt.status, 1, 8)
 			if err != nil {

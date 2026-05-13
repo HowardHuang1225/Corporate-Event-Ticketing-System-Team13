@@ -124,8 +124,8 @@ func HRReportOverviewReturnsMetricsForEachEvent(t *testing.T, errs *utils.Errors
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查 HR 活動總覽：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 			tt.check()
 		})
 	}
@@ -198,8 +198,8 @@ func HRReportExportEventCSVIncludesRegistrationAndCheckinMetrics(t *testing.T, e
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查 HR CSV 匯出：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 			if got := metrics[tt.metric]; got != tt.want {
 				errs.Add(tt.progress, "預期 CSV metric %s=%s，實際為 %q", tt.metric, tt.want, got)
 			}
@@ -208,8 +208,8 @@ func HRReportExportEventCSVIncludesRegistrationAndCheckinMetrics(t *testing.T, e
 
 	t.Run("核銷率", func(t *testing.T) {
 		progress := "CSV 需包含正確核銷率"
-		t.Logf("檢查 HR CSV 匯出：%s", progress)
-		utils.PrintTestProgress(fmt.Sprintf("- %s\n", progress))
+		t.Logf("子測試：%s", progress)
+		utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", progress))
 
 		got, ok := metrics["check_in_rate"]
 		if !ok {

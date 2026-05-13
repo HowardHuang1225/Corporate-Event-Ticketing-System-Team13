@@ -136,7 +136,7 @@ func seedManagerApplicationFixture(
 	now := time.Now().UTC().Truncate(time.Second)
 	event := model.Event{
 		Title:               fmt.Sprintf("審核申請測試活動 %s", utils.UniqueTestSuffix()),
-		Description:         "管理者審核申請 handler 測試資料",
+		Description:         "管理者審核申請處理器測試資料",
 		Venue:               "主會場",
 		PublishTime:         now.Add(-time.Hour),
 		StartTime:           now.Add(24 * time.Hour),
@@ -187,7 +187,7 @@ func seedManagerBatchApplicationsFixture(
 	now := time.Now().UTC().Truncate(time.Second)
 	event := model.Event{
 		Title:               fmt.Sprintf("批次審核申請測試活動 %s", utils.UniqueTestSuffix()),
-		Description:         "管理者批次審核申請 handler 測試資料",
+		Description:         "管理者批次審核申請處理器測試資料",
 		Venue:               "主會場",
 		PublishTime:         now.Add(-time.Hour),
 		StartTime:           now.Add(24 * time.Hour),

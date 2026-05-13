@@ -14,11 +14,11 @@ import (
 func TestManagerTicketCheckin(t *testing.T) {
 	tasks := []utils.Task{
 		{
-			Description: "check in tickets by scanned QR code and manual UUID token",
+			Description: "測試管理者可用掃描 QR code 或手動輸入 UUID token 核銷票券",
 			Target:      CheckinAcceptsScannedQRCodeAndManualUUIDToken,
 		},
 		{
-			Description: "check-in rejects invalid or unknown identifiers",
+			Description: "測試核銷會拒絕不合法或不存在的識別碼",
 			Target:      CheckinRejectsInvalidOrUnknownIdentifiers,
 		},
 	}
@@ -30,7 +30,7 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	utils.PrintTestProgress("Ticket check-in: manager can check in tickets by scanning the QR code token or manually entering the UUID token.\n")
+	utils.PrintTestProgress("票券核銷：管理者可掃描 QR code token 或手動輸入 UUID token 完成核銷。\n")
 	utils.PrintTestProgress("==================================================\n")
 
 	tx, users, cleanup, err := setupManagerTicketLifecycleTest(t)
@@ -59,14 +59,14 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 		ticket   uuid.UUID
 	}{
 		{
-			name:     "scanned-qr-code",
-			progress: "check in with the UUID token decoded from the generated QR code",
+			name:     "掃描 QR code",
+			progress: "使用產生 QR code 解析出的 UUID token 核銷票券。",
 			payload:  gin.H{"qr_token": scannedTicket.QRToken},
 			ticket:   scannedTicket.ID,
 		},
 		{
-			name:     "manual-uuid-token",
-			progress: "check in by manually entering the QR code UUID token",
+			name:     "手動輸入 UUID token",
+			progress: "手動輸入 QR code 對應的 UUID token 核銷票券。",
 			payload:  gin.H{"qr_token": manualTicket.QRToken},
 			ticket:   manualTicket.ID,
 		},
@@ -75,8 +75,8 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("Checking ticket check-in path: %s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			token, ok := tt.payload["qr_token"].(string)
 			if !ok {
@@ -140,7 +140,7 @@ func CheckinRejectsInvalidOrUnknownIdentifiers(t *testing.T, errs *utils.Errors)
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	utils.PrintTestProgress("Ticket check-in errors: invalid, unknown, and already used identifiers should be rejected.\n")
+	utils.PrintTestProgress("票券核銷錯誤情境：不合法、不存在與已使用的識別碼都應被拒絕。\n")
 	utils.PrintTestProgress("==================================================\n")
 
 	tx, users, cleanup, err := setupManagerTicketLifecycleTest(t)
@@ -165,36 +165,36 @@ func CheckinRejectsInvalidOrUnknownIdentifiers(t *testing.T, errs *utils.Errors)
 		wantCode   string
 	}{
 		{
-			name:       "missing identifier",
-			progress:   "submit check-in without qr_token",
+			name:       "缺少識別碼",
+			progress:   "送出核銷請求時缺少 qr_token 應被拒絕。",
 			payload:    gin.H{},
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_ERROR",
 		},
 		{
-			name:       "empty qr token",
-			progress:   "submit check-in with an empty qr_token",
+			name:       "空白 QR token",
+			progress:   "送出核銷請求時 qr_token 為空字串應被拒絕。",
 			payload:    gin.H{"qr_token": ""},
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_ERROR",
 		},
 		{
-			name:       "invalid qr token",
-			progress:   "submit check-in with a malformed qr_token",
+			name:       "QR token 格式錯誤",
+			progress:   "送出核銷請求時 qr_token 格式錯誤應被拒絕。",
 			payload:    gin.H{"qr_token": "not-a-uuid"},
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_ERROR",
 		},
 		{
-			name:       "unknown qr token",
-			progress:   "submit check-in with a well-formed but nonexistent UUID token",
+			name:       "不存在的 QR token",
+			progress:   "送出核銷請求時使用格式正確但不存在的 UUID token 應被拒絕。",
 			payload:    gin.H{"qr_token": uuid.New().String()},
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
 		{
-			name:       "already checked in",
-			progress:   "submit check-in with a UUID token that has already been used",
+			name:       "票券已核銷",
+			progress:   "送出核銷請求時使用已被核銷過的 UUID token 應被拒絕。",
 			payload:    gin.H{"qr_token": usedTicket.QRToken},
 			wantStatus: http.StatusConflict,
 			wantCode:   "ALREADY_CHECKED_IN",
@@ -204,8 +204,8 @@ func CheckinRejectsInvalidOrUnknownIdentifiers(t *testing.T, errs *utils.Errors)
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("Checking ticket check-in rejection: %s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			resp := utils.PerformJSON(router, http.MethodPost, "/checkin", tt.payload)
 			if resp.Code != tt.wantStatus {

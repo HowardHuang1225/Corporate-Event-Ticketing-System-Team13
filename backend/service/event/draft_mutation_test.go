@@ -61,7 +61,7 @@ func UpdateDraftEventAndTicketTypes(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			event, originalTicketTypes, err := seedEventServiceEventWithTicketTypes(tx, manager, "draft")
@@ -138,7 +138,7 @@ func RejectNonDraftUpdateOrDelete(t *testing.T, errs *utils.Errors) {
 		status := status
 		t.Run("不可更新 "+status+" 活動", func(t *testing.T) {
 			progress := fmt.Sprintf("%s 活動不可透過 UpdateDraft 更新，資料與票種都應維持原狀。", status)
-			t.Log(progress)
+			t.Logf("子測試：%s", progress)
 			utils.PrintTestProgress("子測試：" + progress + "\n")
 
 			event, originalTicketTypes, err := seedEventServiceEventWithTicketTypes(tx, manager, status)
@@ -160,7 +160,7 @@ func RejectNonDraftUpdateOrDelete(t *testing.T, errs *utils.Errors) {
 
 		t.Run("不可刪除 "+status+" 活動", func(t *testing.T) {
 			progress := fmt.Sprintf("%s 活動不可透過 DeleteDraft 刪除，資料與票種都應維持原狀。", status)
-			t.Log(progress)
+			t.Logf("子測試：%s", progress)
 			utils.PrintTestProgress("子測試：" + progress + "\n")
 
 			event, originalTicketTypes, err := seedEventServiceEventWithTicketTypes(tx, manager, status)
@@ -210,7 +210,7 @@ func DeleteDraftEventDeletesTicketTypes(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			event, ticketTypes, err := seedEventServiceEventWithTicketTypes(tx, manager, "draft")
@@ -276,7 +276,7 @@ func RejectInvalidDraftUpdateWithoutMutation(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			event, ticketTypes, err := seedEventServiceEventWithTicketTypes(tx, manager, "draft")

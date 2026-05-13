@@ -152,8 +152,8 @@ func ListEventsCanFilterEveryStatusForManagerContext(t *testing.T, errs *utils.E
 	for _, state := range states {
 		t.Run(state, func(t *testing.T) {
 			progress := fmt.Sprintf("測試管理者情境可以查詢 %q 狀態的活動。", state)
-			t.Log(progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", progress))
+			t.Logf("子測試：%s", progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", progress))
 
 			resp := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/events?status="+state, nil)

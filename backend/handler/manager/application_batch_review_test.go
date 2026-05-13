@@ -83,8 +83,8 @@ func BatchReviewApplicationRoutesProcessPendingApplications(t *testing.T, errs *
 
 	for _, tt := range reviewTests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查批次審核流程：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			_, ticketType, apps, err := seedManagerBatchApplicationsFixture(
 				tx,
@@ -236,8 +236,8 @@ func BatchReviewApplicationRoutesRejectMixedStatusApplications(t *testing.T, err
 
 	for _, tt := range reviewTests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查批次審核防護：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			_, ticketType, apps, err := seedManagerBatchApplicationsFixture(
 				tx,

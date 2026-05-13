@@ -135,8 +135,8 @@ func StatusAtReturnsExpectedState(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			utils.PrintTestProgress(fmt.Sprintf("檢查活動狀態推算：%s", tt.progress))
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			if got := StatusAt(tt.event, now); got != tt.want {
 				errs.Add(tt.progress, "expected status %q, got %q", tt.want, got)
@@ -387,8 +387,8 @@ func runTimelineCases(t *testing.T, errs *utils.Errors, tests []timelineTestCase
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查活動時間驗證：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			err := validateTimeline(tt.publishTime, tt.startTime, tt.applyDeadline, tt.endTime)
 			if wantErr {

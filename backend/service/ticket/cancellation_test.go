@@ -52,7 +52,7 @@ func CancelApplicationReturnsInventory(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			_, ticketType, app, _, err := seedTicketServiceApplicationWithTickets(tx, users, tt.status, tt.quantity, tt.remaining, tt.tickets)
@@ -127,7 +127,7 @@ func CancelApplicationRejectsUsedTickets(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			_, ticketType, app, _, err := seedTicketServiceApplicationWithTickets(tx, users, "approved", 2, 8, []ticketServiceTicketSpec{
@@ -206,7 +206,7 @@ func CancelTicketCreatesCancelledAuditApplication(t *testing.T, errs *utils.Erro
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			_, ticketType, app, tickets, err := seedTicketServiceApplicationWithTickets(tx, users, "approved", 2, 8, []ticketServiceTicketSpec{{}, {}})
@@ -305,7 +305,7 @@ func CancelTicketRejectsUsedTicket(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			_, ticketType, _, tickets, err := seedTicketServiceApplicationWithTickets(tx, users, "approved", 1, 9, []ticketServiceTicketSpec{{IsUsed: true}})

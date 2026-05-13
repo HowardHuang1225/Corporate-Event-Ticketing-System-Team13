@@ -163,8 +163,8 @@ func HRReportEventStatsReturnsRegistrationAndCheckinMetrics(t *testing.T, errs *
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查 HR 單一活動統計：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 			tt.check()
 		})
 	}

@@ -109,7 +109,7 @@ func CheckAndPublishPublishesDueDraftsOnly(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			got, err := publishingWorkerEventStatus(tx, tt.event.ID.String())
@@ -164,8 +164,8 @@ func EventStateSchedulerTransitionsEventBySchedule(t *testing.T, errs *utils.Err
 		check := check
 		failed := false
 		t.Run(check.name, func(t *testing.T) {
-			t.Logf("檢查活動狀態排程：%s", check.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", check.progress))
+			t.Logf("子測試：%s", check.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", check.progress))
 
 			if err := waitForScheduledEventStatus(db, event.ID.String(), check.wantStatus, check.timeout); err != nil {
 				errs.Add(check.progress, "%v", err)

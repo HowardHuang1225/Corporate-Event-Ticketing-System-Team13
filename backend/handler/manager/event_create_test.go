@@ -125,8 +125,8 @@ func CreateEventRejectsInvalidPayloads(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查建立活動欄位驗證：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			payload := validManagerCreateEventPayload(now)
 			tt.mutate(payload)

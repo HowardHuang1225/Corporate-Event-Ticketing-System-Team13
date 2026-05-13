@@ -50,7 +50,7 @@ func GenerateAndValidateJWTClaims(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			issuedLowerBound := time.Now().Add(-1 * time.Second)
@@ -101,7 +101,7 @@ func RejectInvalidJWTTokens(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Log(tt.progress)
+			t.Logf("子測試：%s", tt.progress)
 			utils.PrintTestProgress("子測試：" + tt.progress + "\n")
 
 			claims, err := ValidateToken(tt.token, jwtTestSecret)

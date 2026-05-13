@@ -71,8 +71,8 @@ func PublishAndCloseEventRoutesUpdateStatus(t *testing.T, errs *utils.Errors) {
 
 	for _, tt := range actionTests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("檢查活動狀態操作：%s", tt.progress)
-			utils.PrintTestProgress(fmt.Sprintf("- %s\n", tt.progress))
+			t.Logf("子測試：%s", tt.progress)
+			utils.PrintTestProgress(fmt.Sprintf("子測試：%s\n", tt.progress))
 
 			resp := utils.PerformJSON(router, tt.method, tt.path, gin.H{})
 			if resp.Code != http.StatusOK {
