@@ -1,4 +1,4 @@
-package pkg
+package scheduler
 
 import "time"
 
