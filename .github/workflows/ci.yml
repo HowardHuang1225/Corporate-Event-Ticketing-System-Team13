@@ -69,3 +69,12 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down
+    env:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_PORT: 5432
+      REDIS_PORT: 6379
+      JWT_SECRET: test-secret
+      PORT: 8080
+      ALLOWED_ORIGINS: "*"
