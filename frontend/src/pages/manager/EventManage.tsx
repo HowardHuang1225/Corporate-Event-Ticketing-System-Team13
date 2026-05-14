@@ -8,10 +8,17 @@ type EventStatus = 'draft' | 'published' | 'closed' | 'ended'
 function StatusBadge({ status, publishTime }: { status: EventStatus, publishTime?: string }) {
   const m: Record<string, string> = { draft: '草稿', published: '發布中', closed: '已截止', ended: '已結束' }
   const isScheduled = status === 'draft' && publishTime && new Date(publishTime) > new Date()
+  const isPendingPublish = status === 'draft' && publishTime && new Date(publishTime) <= new Date()
   
   if (isScheduled) {
-    return <span className="badge badge-draft" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+    return <span className="badge badge-draft">
       <Clock size={12} /> 排程中
+    </span>
+  }
+
+  if (isPendingPublish) {
+    return <span className="badge badge-pending">
+      <Clock size={12} /> 發布處理中
     </span>
   }
   
