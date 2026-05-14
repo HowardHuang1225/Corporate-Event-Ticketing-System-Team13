@@ -168,3 +168,16 @@ go test ./handler -run TestEvent // 跑event_test.go
 go test ./handler -run TestAuth // 跑auth_test.go
 go test ./handler -run TestTicket // 跑ticket_test.go
 ```
+
+## Load Test
+
+Load Test 包含以下步驟：
+- generate 1個虛假 event 和2000個虛假 users
+- 把虛假資料注入資料庫
+- 跑k6測試（可在 book-ticket.js scenarios 中設定用戶數量和每人購買張數）
+- 刪除虛假測試資料
+
+```bash
+chmod +x run_load_test.sh
+./load-test/run_load_test.sh
+```
