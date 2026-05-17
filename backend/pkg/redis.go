@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"time"
+	"errors"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -28,13 +29,23 @@ func NewRedisClient(url string) *redis.Client {
 // AcquireLock tries to get a distributed lock. Returns true if acquired.
 func AcquireLock(ctx context.Context, client *redis.Client, key string, ttl time.Duration, waitTimeout time.Duration) (bool, error) {
 	deadline := time.Now().Add(waitTimeout)
+	// for time.Now().Before(deadline) {
+	// 	acquired, err := client.SetNX(ctx, "lock:"+key, 1, ttl).Result()
+	// 	if err != nil {
+	// 		return false, err
+	// 	}
+	// 	if acquired {
+	// 		return true, nil
+	// 	}
+	// 	time.Sleep(5 * time.Millisecond)
+	// }
 	for time.Now().Before(deadline) {
-		acquired, err := client.SetNX(ctx, "lock:"+key, 1, ttl).Result()
-		if err != nil {
-			return false, err
-		}
-		if acquired {
+		_, err := client.Set(ctx, "lock:"+key, 1, ttl).Result()
+		if err == nil {
 			return true, nil
+		}
+		if !errors.Is(err, redis.Nil) {
+			return false, err
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
