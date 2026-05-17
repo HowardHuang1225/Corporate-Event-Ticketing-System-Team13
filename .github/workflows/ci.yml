@@ -2,11 +2,38 @@ name: CI
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main, "feature/*" ]
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # 1. 資安依賴漏洞掃描 (與測試並行，及早發現漏洞)
+  security-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 掃描 repository filesystem
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL'
+
+  # 2. 後端測試與覆蓋率計算
   test-backend:
     runs-on: ubuntu-latest
     services:
@@ -30,32 +57,92 @@ jobs:
       JWT_SECRET: test-secret
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-      - run: cd backend && go mod download
-      - run: cd backend && go test ./...
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true   
+          cache-dependency-path: backend/go.sum
+
+      - name: Install dependencies
+        run: cd backend && go mod download
+
+      # 執行測試並生成覆蓋率檔案 (含 -race 競爭檢測)
+      - name: Run tests with coverage
+        run: |
+          cd backend
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+          echo "=== 總單元測試覆蓋率 ==="
+          go tool cover -func=coverage.txt
+
+      # 將覆蓋率報告儲存為 GitHub Actions 的 Artifact，供後續下載或檢視
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: backend/coverage.txt
+
+  # 3. 後端 Code Lint
+  golangci:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12
+          working-directory: ./backend
+
+  # 4. 前端檢查與打包
   build-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: cd frontend && npm ci
-      - run: cd frontend && npm run build
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Check Code Style
+        run: cd frontend && npm run lint --if-present
+
+      - name: Build Frontend
+        run: cd frontend && npm run build
+
+  # 5. 整合測試 (需等測試、Lint 與資安掃描都過才執行)
   integration-test:
     runs-on: ubuntu-latest
+    needs: [security-scan, test-backend, golangci, build-frontend]
+    env:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_PORT: 5432
+      REDIS_PORT: 6379
+      JWT_SECRET: test-secret
+      PORT: 8080
+      ALLOWED_ORIGINS: "*"
     steps:
       - uses: actions/checkout@v4
 
       - name: Build services
-        run: docker compose build
+        run: docker compose -f docker-compose.ci.yml build
 
       - name: Start services
-        run: docker compose up -d
+        run: docker compose -f docker-compose.ci.yml up -d
 
       - name: Wait for backend health
         run: |
@@ -68,13 +155,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down
-    env:
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: postgres
-      DB_PORT: 5432
-      REDIS_PORT: 6379
-      JWT_SECRET: test-secret
-      PORT: 8080
-      ALLOWED_ORIGINS: "*"
+        run: docker compose -f docker-compose.ci.yml down -v

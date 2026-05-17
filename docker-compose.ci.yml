@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ts_postgres_ci
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ticketing
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketing"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ts_redis_ci
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ts_backend_ci
+
+    environment:
+      DATABASE_URL: host=postgres user=postgres password=postgres dbname=ticketing port=5432 sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: test-secret
+      PORT: 8080
+      ALLOWED_ORIGINS: http://frontend
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    expose:
+      - "8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: ts_frontend_ci
+
+    environment:
+      VITE_API_URL: http://backend:8080
+
+    depends_on:
+      - backend
+
+    expose:
+      - "80"
