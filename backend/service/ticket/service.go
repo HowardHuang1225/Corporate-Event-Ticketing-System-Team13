@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"ticketing-system/backend/model"
@@ -24,6 +25,8 @@ type Service struct {
 	redis        *redis.Client
 	applications *repository.ApplicationRepository
 	tickets      *repository.TicketRepository
+	queue        QueueOptions
+	queueStarted atomic.Bool
 }
 
 func New(repos *repository.Repositories) *Service {
@@ -32,7 +35,20 @@ func New(repos *repository.Repositories) *Service {
 		redis:        repos.Redis,
 		applications: repos.Applications,
 		tickets:      repos.Tickets,
+		queue:        QueueOptions{},
 	}
+}
+
+// EnableQueueFromEnv enables the Redis Stream waiting-room mode for real application runtime.
+// Keep Service.New queue-disabled by default so package/unit tests remain deterministic even
+// when the Docker container has TICKET_QUEUE_ENABLED=true in its environment.
+func (s *Service) EnableQueueFromEnv() {
+	options := loadQueueOptionsFromEnv()
+	if !options.Enabled || s.redis == nil {
+		s.queue = QueueOptions{}
+		return
+	}
+	s.queue = options
 }
 
 type ApplyRequest struct {
@@ -53,6 +69,8 @@ type CheckinRequest struct {
 type ApplyResult struct {
 	Application model.Application
 	Created     bool
+	Queued      bool
+	QueueID     string
 }
 
 type CheckinResult struct {
@@ -61,6 +79,9 @@ type CheckinResult struct {
 }
 
 func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error) {
+	if s.queue.Enabled {
+		return s.ApplyQueued(userID, req)
+	}
 	eventID, err := uuid.Parse(req.EventID)
 	if err != nil {
 		return ApplyResult{}, apperror.Validation("Invalid event_id")
@@ -161,8 +182,6 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 			if time.Now().After(event.ApplyDeadline) {
 				return apperror.New(400, "APPLY_DEADLINE_PASSED", "Application deadline has passed")
 			}
-
-
 
 			var issuedCount int64
 			if err := tx.Model(&model.Ticket{}).

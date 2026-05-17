@@ -110,9 +110,22 @@ func updateEventStatuses(db *gorm.DB, now time.Time) error {
 	})
 }
 
+func validTimelineWhere() string {
+	return "publish_time <= start_time AND publish_time <= apply_deadline AND start_time <= end_time AND apply_deadline <= end_time"
+}
+
 func publishDueDrafts(db *gorm.DB, now time.Time) (int64, error) {
+	var invalidDueDrafts int64
+	if err := db.Model(&model.Event{}).
+		Where("status = ? AND publish_time <= ?", "draft", now).
+		Where("NOT (" + validTimelineWhere() + ")").
+		Count(&invalidDueDrafts).Error; err == nil && invalidDueDrafts > 0 {
+		log.Printf("Scheduler warning: skipped %d due draft event(s) with invalid timeline", invalidDueDrafts)
+	}
+
 	result := db.Model(&model.Event{}).
 		Where("status = ? AND publish_time <= ?", "draft", now).
+		Where(validTimelineWhere()).
 		Update("status", "published")
 	return result.RowsAffected, result.Error
 }

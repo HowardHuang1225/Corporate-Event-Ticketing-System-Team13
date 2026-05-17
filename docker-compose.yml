@@ -8,6 +8,7 @@ services:
     image: postgres:15-alpine
     container_name: ts_postgres
     restart: always
+    command: ["postgres", "-c", "max_connections=250"]
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -71,6 +72,16 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - PORT=${PORT}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - DB_MAX_OPEN_CONNS=${DB_MAX_OPEN_CONNS}
+      - DB_MAX_IDLE_CONNS=${DB_MAX_IDLE_CONNS}
+      - DB_CONN_MAX_LIFETIME_MINUTES=${DB_CONN_MAX_LIFETIME_MINUTES}
+      - TICKET_QUEUE_ENABLED=${TICKET_QUEUE_ENABLED}
+      - TICKET_QUEUE_STREAM=${TICKET_QUEUE_STREAM}
+      - TICKET_QUEUE_GROUP=${TICKET_QUEUE_GROUP}
+      - TICKET_QUEUE_WORKERS=${TICKET_QUEUE_WORKERS}
+      - TICKET_QUEUE_MAX_WAITING=${TICKET_QUEUE_MAX_WAITING}
+      - TICKET_QUEUE_RESERVATION_TTL_SECONDS=${TICKET_QUEUE_RESERVATION_TTL_SECONDS}
+      - TICKET_QUEUE_STATUS_TTL_SECONDS=${TICKET_QUEUE_STATUS_TTL_SECONDS}
     depends_on:
       postgres:
         condition: service_healthy

@@ -46,6 +46,7 @@ export const options = {
 const bookingSuccess = new Counter('booking_success');
 const bookingCreated201 = new Counter('booking_created_201');
 const bookingOK200 = new Counter('booking_ok_200');
+const bookingQueued202 = new Counter('booking_queued_202');
 const bookingSoldOut409 = new Counter('booking_sold_out_409');
 const bookingBadRequest400 = new Counter('booking_bad_request_400');
 const bookingUnauthorized401 = new Counter('booking_unauthorized_401');
@@ -125,6 +126,11 @@ export default function () {
     bookingSuccess.add(1);
     bookingSuccessRate.add(true);
     bookingFailureRate.add(false);
+  } else if (res.status === 202) {
+    bookingQueued202.add(1);
+    bookingSuccess.add(1);
+    bookingSuccessRate.add(true);
+    bookingFailureRate.add(false);
   } else if (res.status === 200) {
     bookingOK200.add(1);
     bookingSuccess.add(1);
@@ -149,7 +155,7 @@ export default function () {
   }
 
   check(res, {
-    'status is 200/201 (成功搶到)': (r) => r.status === 200 || r.status === 201,
+    'status is 200/201/202 (成功或已排隊)': (r) => r.status === 200 || r.status === 201 || r.status === 202,
     'status is 409 (票已售罄)': (r) => r.status === 409,
     'status is 400/403 (業務規則擋下)': (r) => r.status === 400 || r.status === 403,
     'status is not 5xx': (r) => r.status < 500,

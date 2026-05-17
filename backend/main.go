@@ -27,7 +27,7 @@ func main() {
 	_ = godotenv.Load(".env", "../.env")
 
 	cfg := config.Load()
-	db := database.Connect(cfg.DatabaseURL)
+	db := database.Connect(cfg)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
 	bootstrap.SeedDemoData(db)
 	scheduler.StartEventSchedulers(db, redisClient)

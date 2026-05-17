@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 
 	authhandler "ticketing-system/backend/handler/auth"
@@ -42,6 +43,8 @@ func Register(router *gin.Engine, deps Dependencies) {
 	authService := authsvc.New(repos, deps.JWTSecret)
 	eventService := eventsvc.New(repos)
 	ticketService := ticketsvc.New(repos)
+	ticketService.EnableQueueFromEnv()
+	ticketService.StartQueueWorkers(context.Background())
 	reportService := reportsvc.New(repos)
 
 	authHandler := authhandler.New(authService)
@@ -66,6 +69,7 @@ func Register(router *gin.Engine, deps Dependencies) {
 	api.PATCH("/events/:id/close", middleware.RequireRole("event_manager"), managerHandler.CloseEvent)
 
 	api.POST("/applications", middleware.RequireRole("employee"), employeeHandler.Apply)
+	api.GET("/applications/queue/:idempotency_key", middleware.RequireRole("employee"), employeeHandler.QueueStatus)
 	api.GET("/applications/my", middleware.RequireRole("employee"), employeeHandler.MyApplications)
 	api.POST("/applications/:id/cancel", middleware.RequireRole("employee"), employeeHandler.CancelApplication)
 
