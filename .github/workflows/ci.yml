@@ -75,6 +75,13 @@ jobs:
         run: cd backend && go mod download
 
       - name: Run tests with coverage
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USER: postgres      
+          DB_PASSWORD: postgres   
+          DB_NAME: postgres     
+          REDIS_URL: redis://127.0.0.1:6379  
         run: |
           cd backend
           go test -race -coverprofile=coverage.txt -covermode=atomic ./...
