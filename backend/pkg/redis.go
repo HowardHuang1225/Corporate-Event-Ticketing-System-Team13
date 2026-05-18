@@ -40,7 +40,10 @@ func AcquireLock(ctx context.Context, client *redis.Client, key string, ttl time
 	// 	time.Sleep(5 * time.Millisecond)
 	// }
 	for time.Now().Before(deadline) {
-		_, err := client.Set(ctx, "lock:"+key, 1, ttl).Result()
+        _, err := client.SetArgs(ctx, "lock:"+key, 1, redis.SetArgs{
+            Mode: "NX",
+            TTL:  ttl,
+        }).Result()
 		if err == nil {
 			return true, nil
 		}

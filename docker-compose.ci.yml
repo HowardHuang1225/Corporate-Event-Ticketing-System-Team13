@@ -30,7 +30,7 @@ services:
       DATABASE_URL: host=postgres user=postgres password=postgres dbname=ticketing port=5432 sslmode=disable
       REDIS_URL: redis://redis:6379
       JWT_SECRET: test-secret
-      PORT: 8080
+      PORT: 8001
       ALLOWED_ORIGINS: http://frontend
 
     depends_on:
@@ -40,7 +40,7 @@ services:
         condition: service_healthy
 
     expose:
-      - "8080"
+      - "8001"
 
   frontend:
     build:
@@ -48,7 +48,7 @@ services:
     container_name: ts_frontend_ci
 
     environment:
-      VITE_API_URL: http://backend:8080
+      VITE_API_URL: http://backend:8001
 
     depends_on:
       - backend

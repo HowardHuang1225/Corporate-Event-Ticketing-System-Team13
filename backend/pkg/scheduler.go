@@ -33,7 +33,10 @@ func StartEventStateScheduler(db *gorm.DB, rdb *redis.Client, interval time.Dura
 				// 	// Another instance is already running
 				// 	continue
 				// }
-				_, err := rdb.Set(ctx, lockKey, "1", ttl).Result()
+				_, err := rdb.SetArgs(ctx, lockKey, "1", redis.SetArgs{
+					Mode: "NX",
+					TTL:  ttl,
+				}).Result()
 
 				if errors.Is(err, redis.Nil) {
 					continue

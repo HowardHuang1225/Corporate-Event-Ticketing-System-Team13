@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 	"time"
-
+	"errors"
 	"ticketing-system/backend/model"
 
 	"github.com/redis/go-redis/v9"
@@ -82,12 +82,26 @@ func acquireEventSchedulerLock(ctx context.Context, rdb *redis.Client, interval 
 		return true
 	}
 
-	ok, err := rdb.SetNX(ctx, eventSchedulerLockKey, "1", schedulerLockTTL(interval)).Result()
+	// ok, err := rdb.SetNX(ctx, eventSchedulerLockKey, "1", schedulerLockTTL(interval)).Result()
+	// if err != nil {
+	// 	log.Printf("Scheduler warning: failed to acquire Redis lock, running without lock: %v", err)
+	// 	return true
+	// }
+	_, err := rdb.SetArgs(ctx, eventSchedulerLockKey, "1", redis.SetArgs{
+		Mode: "NX",
+		TTL:  schedulerLockTTL(interval),
+	}).Result()
+
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false 
+		}
+
 		log.Printf("Scheduler warning: failed to acquire Redis lock, running without lock: %v", err)
 		return true
 	}
-	return ok
+
+	return true
 }
 
 func schedulerLockTTL(interval time.Duration) time.Duration {
