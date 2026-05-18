@@ -9,6 +9,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+HTTP_TIMEOUT=${HTTP_TIMEOUT:-30s}
+SETTLE_SECONDS=${SETTLE_SECONDS:-0}
 TOTAL_USERS=${TOTAL_USERS:-2000}
 TOTAL_QUOTA=${TOTAL_QUOTA:-50000}
 MAX_TICKETS_PER_PERSON=${MAX_TICKETS_PER_PERSON:-1}
@@ -20,6 +22,8 @@ KEEP_DATA=${KEEP_DATA:-1}
 STRICT_THRESHOLDS=${STRICT_THRESHOLDS:-0}
 FAIL_ON_THRESHOLD=${FAIL_ON_THRESHOLD:-0}
 ERROR_SAMPLE_RATE=${ERROR_SAMPLE_RATE:-0.02}
+TICKET_QUEUE_STREAM=${TICKET_QUEUE_STREAM:-ticket:applications}
+TICKET_QUEUE_GROUP=${TICKET_QUEUE_GROUP:-ticket-workers}
 RUN_LABEL=${RUN_LABEL:-booking}
 RUN_ID=${RUN_ID:-$(date +%Y%m%d-%H%M%S)-${RUN_LABEL}-u${TOTAL_USERS}-q${TOTAL_QUOTA}-v${VUS}-i${ITERATIONS}}
 RESULT_DIR="load-test/results/${RUN_ID}"
@@ -47,6 +51,10 @@ KEEP_DATA=${KEEP_DATA}
 STRICT_THRESHOLDS=${STRICT_THRESHOLDS}
 FAIL_ON_THRESHOLD=${FAIL_ON_THRESHOLD}
 ERROR_SAMPLE_RATE=${ERROR_SAMPLE_RATE}
+TICKET_QUEUE_STREAM=${TICKET_QUEUE_STREAM}
+TICKET_QUEUE_GROUP=${TICKET_QUEUE_GROUP}
+HTTP_TIMEOUT=${HTTP_TIMEOUT}
+SETTLE_SECONDS=${SETTLE_SECONDS}
 PARAMS
 
 echo -e "${BLUE}=====================================================${NC}"
@@ -67,10 +75,13 @@ cat load-test/setup_db.sql | docker compose exec -T postgres psql -q -U ts_user 
 
 sleep 2
 
+STREAM_LEN_BEFORE=$(docker compose exec -T redis redis-cli XLEN "${TICKET_QUEUE_STREAM}" 2>/dev/null | tr -d '\r' || true)
+STREAM_LEN_BEFORE=${STREAM_LEN_BEFORE:-0}
+
 echo -e "\n${YELLOW}[3/7] Running k6 ...${NC}"
 pushd load-test >/dev/null || exit 1
 set +e
-BASE_URL="$BASE_URL" VUS="$VUS" ITERATIONS="$ITERATIONS" MAX_DURATION="$MAX_DURATION" STRICT_THRESHOLDS="$STRICT_THRESHOLDS" ERROR_SAMPLE_RATE="$ERROR_SAMPLE_RATE" \
+BASE_URL="$BASE_URL" VUS="$VUS" ITERATIONS="$ITERATIONS" MAX_DURATION="$MAX_DURATION" STRICT_THRESHOLDS="$STRICT_THRESHOLDS" ERROR_SAMPLE_RATE="$ERROR_SAMPLE_RATE" HTTP_TIMEOUT="$HTTP_TIMEOUT" \
   k6 run --summary-export="../${RESULT_DIR}/book-summary.json" book-ticket.js 2>&1 | tee "../${RESULT_DIR}/k6-console.log"
 K6_EXIT=${PIPESTATUS[0]}
 set -e
@@ -80,7 +91,10 @@ echo "K6_EXIT=${K6_EXIT}" > "$RESULT_DIR/k6-exit-code.txt"
 if (( K6_EXIT != 0 )); then
   echo -e "${YELLOW}k6 exited with code ${K6_EXIT}. This often means thresholds were crossed. Continuing to collect DB/Redis evidence...${NC}"
 fi
-
+if (( SETTLE_SECONDS > 0 )); then
+  echo -e "\n${YELLOW}[3.5/7] Waiting ${SETTLE_SECONDS}s for in-flight backend requests to settle ...${NC}"
+  sleep "$SETTLE_SECONDS"
+fi
 echo -e "\n${YELLOW}[4/7] Collecting DB / Redis verification ...${NC}"
 {
   echo "event_id=${EVENT_ID}"
@@ -96,6 +110,18 @@ UNION ALL SELECT 'ticket_type_consumed_by_db', total_quota - remaining FROM tick
 " | sed '/^$/d'
   REDIS_INV=$(docker compose exec -T redis redis-cli GET "inventory:${TICKET_TYPE_ID}" 2>/dev/null | tr -d '\r' || true)
   echo "redis_inventory=${REDIS_INV:-NULL}"
+  STREAM_LEN_AFTER=$(docker compose exec -T redis redis-cli XLEN "${TICKET_QUEUE_STREAM}" 2>/dev/null | tr -d '\r' || true)
+  STREAM_LEN_AFTER=${STREAM_LEN_AFTER:-0}
+  if [[ "$STREAM_LEN_BEFORE" =~ ^[0-9]+$ && "$STREAM_LEN_AFTER" =~ ^[0-9]+$ ]]; then
+    STREAM_LEN_DELTA=$((STREAM_LEN_AFTER - STREAM_LEN_BEFORE))
+  else
+    STREAM_LEN_DELTA="NULL"
+  fi
+  echo "redis_stream_length_before=${STREAM_LEN_BEFORE:-NULL}"
+  echo "redis_stream_length_after=${STREAM_LEN_AFTER:-NULL}"
+  echo "redis_stream_length_delta=${STREAM_LEN_DELTA}"
+  PENDING_SUMMARY=$(docker compose exec -T redis redis-cli XPENDING "${TICKET_QUEUE_STREAM}" "${TICKET_QUEUE_GROUP}" 2>/dev/null | tr -d '\r' | tr '\n' ' ' || true)
+  echo "redis_stream_pending=${PENDING_SUMMARY:-NULL}"
 } | tee "$RESULT_DIR/db-summary.txt"
 
 echo -e "\n${YELLOW}[4.5/7] Collecting docker logs for debugging ...${NC}"

@@ -121,6 +121,8 @@ func LoadAppliesDefaultsAndOverrides(t *testing.T, errs *utils.Errors) {
 		wantJWTSecret      string
 		wantPort           string
 		wantAllowedOrigins string
+		wantMaxOpen        int
+		wantMaxIdle        int
 	}{
 		{
 			name:     "預設值",
@@ -132,6 +134,8 @@ func LoadAppliesDefaultsAndOverrides(t *testing.T, errs *utils.Errors) {
 			wantJWTSecret:      "dev-jwt-secret-change-in-prod-32chars!!",
 			wantPort:           "8001",
 			wantAllowedOrigins: "http://localhost:5173,http://localhost:3000,http://localhost:8080",
+			wantMaxOpen:        200,
+			wantMaxIdle:        50,
 		},
 		{
 			name:     "覆寫值",
@@ -142,11 +146,15 @@ func LoadAppliesDefaultsAndOverrides(t *testing.T, errs *utils.Errors) {
 				t.Setenv("JWT_SECRET", "unit-test-secret")
 				t.Setenv("PORT", "19000")
 				t.Setenv("ALLOWED_ORIGINS", "https://example.com")
+				t.Setenv("DB_MAX_OPEN_CONNS", "500")
+				t.Setenv("DB_MAX_IDLE_CONNS", "100")
 			},
 			wantRedisURL:       "redis://redis.example.local:6380",
 			wantJWTSecret:      "unit-test-secret",
 			wantPort:           "19000",
 			wantAllowedOrigins: "https://example.com",
+			wantMaxOpen:        500,
+			wantMaxIdle:        100,
 		},
 	}
 

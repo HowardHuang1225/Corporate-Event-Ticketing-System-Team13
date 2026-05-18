@@ -29,10 +29,16 @@ export default function EventDetail() {
 
   const applyMutation = useMutation({
     mutationFn: (payload: any) => api.post('/applications', payload),
-    onSuccess: () => {
-      toast.success('搶票成功！已為您自動發票')
+    onSuccess: (res) => {
+      if (res.status === 202 || res.data?.data?.status === 'queued') {
+        toast.success('已進入排隊，系統會依序處理申請')
+      } else {
+        toast.success('搶票成功！已為您自動發票')
+      }
       setShowModal(false)
       qc.invalidateQueries({ queryKey: ['event', id] })
+      qc.invalidateQueries({ queryKey: ['my-applications'] })
+      qc.invalidateQueries({ queryKey: ['my-tickets'] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error?.message ?? '申請失敗')
@@ -189,7 +195,7 @@ export default function EventDetail() {
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>取消</button>
               <button className="btn btn-primary" onClick={handleApply} disabled={applyMutation.isPending}>
-                {applyMutation.isPending ? '申請中…' : '確認申請'}
+                {applyMutation.isPending ? '送出中…' : '確認申請'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@ package database
 import (
 	"log"
 
+	"ticketing-system/backend/config" 
 	"ticketing-system/backend/model"
 
 	"gorm.io/driver/postgres"
@@ -10,8 +11,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func Connect(dsn string) *gorm.DB {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+func Connect(cfg *config.Config) *gorm.DB {
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
@@ -33,10 +34,13 @@ func Connect(dsn string) *gorm.DB {
 	}
 
 	sqlDB, _ := db.DB()
-	sqlDB.SetMaxIdleConns(50)
-	sqlDB.SetMaxOpenConns(200)
+	
+	// 動態設定連線池
+	sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
 
-	log.Println("Database connected and migrated with optimized pool")
+	log.Printf("Database connected with optimized pool (MaxOpen: %d, MaxIdle: %d)", cfg.DBMaxOpenConns, cfg.DBMaxIdleConns)
 	return db
 }
 

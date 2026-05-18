@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Status: pending | approved | rejected | cancelled
+// Status: queued | processing | pending | approved | rejected | cancelled
 type Application struct {
 	ID             uuid.UUID  `gorm:"type:varchar(36);primaryKey"      json:"id"`
 	UserID         uuid.UUID  `gorm:"type:varchar(36);not null;index"  json:"user_id"`

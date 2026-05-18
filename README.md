@@ -180,3 +180,14 @@ Load Test 包含以下步驟：
 chmod +x run_load_test.sh
 ./load-test/run_load_test.sh
 ```
+## High-Concurrency Booking Mode: Waiting Room + Redis Stream
+
+For flash-sale style traffic, the backend supports an optional queue-based ticket application mode. Enable it with:
+
+```env
+TICKET_QUEUE_ENABLED=true
+```
+
+In this mode, `POST /v1/applications` quickly reserves inventory in Redis, appends the request to a Redis Stream, and returns `202 Accepted` with status `queued`. Background workers then create the final application and tickets in PostgreSQL. This reduces burst pressure on the database and is useful for cloud-native high-concurrency experiments.
+
+See `docs/queue_waiting_room.md` for the full design and testing steps.

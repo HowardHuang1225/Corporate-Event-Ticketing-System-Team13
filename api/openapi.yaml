@@ -91,11 +91,35 @@ paths:
                   type: string
       responses:
         "200":
-          description: 成功申請或進入待審核狀態
+          description: 已存在的申請或同步模式成功
+        "201":
+          description: 同步模式成功建立申請與票券
+        "202":
+          description: Queue mode：已進入 Redis Stream waiting room，背景 worker 將依序處理
         "403":
           description: 不符資格
         "409":
           description: 票已售罄
+
+
+  /applications/queue/{idempotency_key}:
+    get:
+      summary: 查詢排隊申請狀態 (Employee)
+      tags:
+        - Applications
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: idempotency_key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Queue status found
+        "404":
+          description: Queue status not found
 
 components:
   securitySchemes:

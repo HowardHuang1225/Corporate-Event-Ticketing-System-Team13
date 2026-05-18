@@ -42,6 +42,7 @@ const env = fs.existsSync(envPath) ? JSON.parse(fs.readFileSync(envPath, 'utf8')
 
 const success = num(summary, 'booking_success');
 const serverErrors = num(summary, 'booking_server_error');
+const queued202 = num(summary, 'booking_queued_202');
 const soldOut = num(summary, 'booking_sold_out_409');
 const bad400 = num(summary, 'booking_bad_request_400');
 const unauth401 = num(summary, 'booking_unauthorized_401');
@@ -55,6 +56,10 @@ const dbQuota = Number(db.ticket_type_total_quota ?? NaN);
 const appCount = Number(db.applications_count ?? NaN);
 const ticketCount = Number(db.tickets_count ?? NaN);
 const redisInv = Number(db.redis_inventory ?? NaN);
+const streamBefore = db.redis_stream_length_before ?? 'N/A';
+const streamAfter = db.redis_stream_length_after ?? db.redis_stream_length ?? 'N/A';
+const streamDelta = db.redis_stream_length_delta ?? 'N/A';
+const streamPending = db.redis_stream_pending ?? 'N/A';
 const inventoryEquationOK = Number.isFinite(dbConsumed) && Number.isFinite(dbRemaining) && Number.isFinite(dbQuota) && dbConsumed + dbRemaining === dbQuota;
 const successMatchesDb = Number.isFinite(appCount) && Number.isFinite(ticketCount) && appCount === ticketCount && appCount === success;
 
@@ -87,6 +92,7 @@ const md = `# Load Test Run Summary
 |---|---:|
 | total HTTP requests | ${reqs} |
 | booking_success | ${success} |
+| booking_queued_202 | ${queued202} |
 | booking_sold_out_409 | ${soldOut} |
 | booking_bad_request_400 | ${bad400} |
 | booking_unauthorized_401 | ${unauth401} |
@@ -99,6 +105,10 @@ const md = `# Load Test Run Summary
 | http_req_duration p95 | ${p(summary, 'http_req_duration', 'p(95)')} |
 | http_req_duration p99 | ${p(summary, 'http_req_duration', 'p(99)')} |
 | http_reqs/sec | ${summary.metrics?.http_reqs?.rate?.toFixed?.(2) ?? 'N/A'} |
+| redis_stream_length_before | ${streamBefore} |
+| redis_stream_length_after | ${streamAfter} |
+| redis_stream_length_delta_this_run | ${streamDelta} |
+| redis_stream_pending | ${streamPending} |
 
 ## DB / Redis verification
 
@@ -109,10 +119,11 @@ ${dbText || 'db-summary.txt not found'}
 ## Quick interpretation
 
 - Inventory equation \`consumed_by_db + remaining = total_quota\`: **${inventoryEquationOK ? 'OK' : 'NEEDS_CHECK'}**.
-- Applications count = tickets count = k6 success count: **${successMatchesDb ? 'OK' : 'NEEDS_CHECK'}**.
+- Applications count = tickets count = k6 accepted/created success count: **${successMatchesDb ? 'OK' : 'NEEDS_CHECK'}**.
 - If server errors are high while quota is not exhausted, this is likely backend/DB throughput or transaction contention, not normal sold-out behavior.
 - If VUS is larger than TOTAL_USERS, the test is invalid because some VUs do not have real user IDs.
 - If p95 is high and server errors are high, reduce VUS to find the maximum stable point, then compare after optimization/scale-out.
+- In queue mode, redis_stream_length_after is cumulative. Prefer redis_stream_length_delta_this_run when explaining how many queue jobs this specific load-test run produced.
 `;
 
 fs.writeFileSync(outPath, md);

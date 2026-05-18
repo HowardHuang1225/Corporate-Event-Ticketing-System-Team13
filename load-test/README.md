@@ -94,3 +94,29 @@ redis-tail.log
 ```
 
 These logs are useful when k6 reports many HTTP 500 responses, because the API response body usually only says `INTERNAL_ERROR`, while the container logs may contain the real database or transaction error.
+## Queue mode load-test notes
+
+When `TICKET_QUEUE_ENABLED=true`, `POST /v1/applications` may return `202 Accepted` instead of `201 Created`. The k6 script counts both as successful business outcomes:
+
+- `201`: synchronous booking created immediately
+- `202`: request entered the Redis Stream waiting room
+- `409`: normal sold-out response
+- `5xx`: server-side failure
+
+Recommended queue-mode run:
+
+```bash
+RUN_LABEL=5000v5000q-queue \
+TOTAL_USERS=5000 \
+TOTAL_QUOTA=5000 \
+VUS=5000 \
+ITERATIONS=1 \
+MAX_DURATION=3m \
+HTTP_TIMEOUT=60s \
+SETTLE_SECONDS=120 \
+KEEP_DATA=1 \
+STRICT_THRESHOLDS=0 \
+./load-test/run_load_test.sh
+```
+
+For larger conceptual tests such as 50,000 users, increase `TOTAL_USERS`, `TOTAL_QUOTA`, `VUS`, and `SETTLE_SECONDS`. In queue mode, the first metric to watch is not immediate DB completion; it is whether requests enter the waiting room without 5xx. Then inspect DB/Redis after enough settle time to confirm the worker pool drains the queue safely.

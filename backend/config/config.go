@@ -1,9 +1,16 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 type Config struct {
 	DatabaseURL string
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime time.Duration
 	RedisURL    string
 	JWTSecret      string
 	Port           string
@@ -13,7 +20,6 @@ type Config struct {
 func Load() *Config {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		// Try to assemble from individual components
 		dbHost := getEnv("DB_HOST", "localhost")
 		dbUser := getEnv("DB_USER", "ts_user")
 		dbPass := getEnv("DB_PASSWORD", "ts_password")
@@ -23,17 +29,29 @@ func Load() *Config {
 	}
 
 	return &Config{
-		DatabaseURL:    dbURL,
-		RedisURL:       getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:      getEnv("JWT_SECRET", "dev-jwt-secret-change-in-prod-32chars!!"),
-		Port:           getEnv("PORT", "8001"),
-		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8080"),
+		DatabaseURL:       dbURL,
+		DBMaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 200),
+		DBMaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 50),
+		DBConnMaxLifetime: time.Duration(getEnvAsInt("DB_CONN_MAX_LIFETIME_MINUTES", 30)) * time.Minute,
+		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:         getEnv("JWT_SECRET", "dev-jwt-secret-change-in-prod-32chars!!"),
+		Port:              getEnv("PORT", "8001"),
+		AllowedOrigins:    getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8080"),
 	}
 }
 
 func getEnv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultVal
+}
+
+func getEnvAsInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if val, err := strconv.Atoi(v); err == nil {
+			return val
+		}
 	}
 	return defaultVal
 }

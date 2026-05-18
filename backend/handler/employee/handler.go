@@ -68,10 +68,26 @@ func (h *Handler) Apply(c *gin.Context) {
 		return
 	}
 	status := http.StatusCreated
-	if !result.Created {
+	if result.Queued {
+		status = http.StatusAccepted
+	} else if !result.Created {
 		status = http.StatusOK
 	}
 	c.JSON(status, shared.OK(result.Application))
+}
+
+func (h *Handler) QueueStatus(c *gin.Context) {
+	userID, err := shared.UserID(c)
+	if err != nil {
+		shared.WriteError(c, err)
+		return
+	}
+	result, err := h.tickets.QueueStatus(userID, c.Param("idempotency_key"))
+	if err != nil {
+		shared.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, shared.OK(result))
 }
 
 func (h *Handler) MyApplications(c *gin.Context) {
