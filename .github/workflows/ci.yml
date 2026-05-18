@@ -38,6 +38,8 @@ jobs:
         image: postgres:13
         env:
           POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -53,11 +55,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DB_HOST: postgres
+      DB_HOST: localhost
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: postgres
-      REDIS_URL: redis://redis:6379
+      DB_NAME: ticketing
+      DB_PORT: 5432
+      REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret
     steps:
       - uses: actions/checkout@v4
