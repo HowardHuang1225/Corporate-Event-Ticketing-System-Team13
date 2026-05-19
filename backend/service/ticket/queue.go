@@ -339,6 +339,7 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 		log.Printf("ticket queue job failed id=%s code=%s err=%v", msg.ID, code, err)
 		return
 	}
+	s.releaseQueuedUserReservation(job.UserID.String(), job.EventID.String(), job.Quantity)
 	_ = s.redis.HSet(ctx, statusKey, map[string]any{
 		"status":         app.Status,
 		"application_id": app.ID.String(),

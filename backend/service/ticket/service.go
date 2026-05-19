@@ -480,6 +480,9 @@ func (s *Service) CancelTicket(ticketID string, userID uuid.UUID) error {
 }
 
 func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResult, error) {
+	if _, err := uuid.Parse(req.QRToken); err != nil {
+		return CheckinResult{}, apperror.Validation("Invalid qr_token format")
+	}
 	var ticket model.Ticket
 	now := time.Now()
 

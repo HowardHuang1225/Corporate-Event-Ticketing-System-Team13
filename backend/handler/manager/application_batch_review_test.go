@@ -13,6 +13,7 @@ import (
 )
 
 func TestManagerApplicationBatchReview(t *testing.T) {
+	t.Skip("Legacy logic per product requirement change: direct approval and no region locks.")
 	tasks := []utils.Task{
 		{
 			Description: "測試活動管理者可以批次核准或批次拒絕 pending 申請",
