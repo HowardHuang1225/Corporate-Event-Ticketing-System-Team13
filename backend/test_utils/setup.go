@@ -23,7 +23,7 @@ func OpenTestDB(t *testing.T, paramDB []any) (*gorm.DB, error) {
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Postgres is not available for tests: %w", err)
+		return nil, fmt.Errorf("postgres is not available for tests: %w", err)
 	}
 
 	sqlDB, err := db.DB()
@@ -31,13 +31,13 @@ func OpenTestDB(t *testing.T, paramDB []any) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to access sql db: %w", err)
 	}
 	t.Cleanup(func() {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := sqlDB.PingContext(ctx); err != nil {
-		return nil, fmt.Errorf("Postgres is not reachable for tests: %w", err)
+		return nil, fmt.Errorf("postgres is not reachable for tests: %w", err)
 	}
 
 	if err := db.AutoMigrate(paramDB...); err != nil {

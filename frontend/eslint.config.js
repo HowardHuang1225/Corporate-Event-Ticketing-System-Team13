@@ -19,5 +19,10 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+
+      "@typescript-eslint/no-explicit-any": "off",
+    },
   },
 ])

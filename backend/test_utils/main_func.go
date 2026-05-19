@@ -55,9 +55,9 @@ func PrintTestProgress(message string) {
 	writeTestProgress(message)
 }
 
-func printTestProgressf(format string, args ...any) {
-	writeTestProgress(fmt.Sprintf(format, args...))
-}
+// func printTestProgressf(format string, args ...any) {
+// 	writeTestProgress(fmt.Sprintf(format, args...))
+// }
 
 func writeTestProgress(message string) {
 	if message == "" {
