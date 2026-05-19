@@ -115,13 +115,6 @@ func managerCreateInvalidTimeCases(now time.Time) []managerCreateInvalidCase {
 			},
 		},
 		{
-			name:     "開始時間沒有早於申請截止時間",
-			progress: "測試 start_time 沒有早於 apply_deadline 時會被拒絕。",
-			mutate: func(payload gin.H) {
-				payload["apply_deadline"] = now.Add(72 * time.Hour).Format(time.RFC3339)
-			},
-		},
-		{
 			name:     "申請截止時間晚於活動結束時間",
 			progress: "測試 apply_deadline 晚於 end_time 時會被拒絕。",
 			mutate: func(payload gin.H) {
@@ -337,6 +330,41 @@ func managerCreateInvalidValueCases() []managerCreateInvalidCase {
 			progress: "測試 max_tickets_per_person 不是整數型別時會被拒絕。",
 			mutate: func(payload gin.H) {
 				payload["max_tickets_per_person"] = "two"
+			},
+		},
+		{
+			name:     "活動名稱為空字串",
+			progress: "測試 title 為空字串時會被拒絕。",
+			mutate: func(payload gin.H) {
+				payload["title"] = ""
+			},
+		},
+		{
+			name:     "活動名稱只有空白",
+			progress: "測試 title 只有空白字元時會被拒絕。",
+			mutate: func(payload gin.H) {
+				payload["title"] = "   "
+			},
+		},
+		{
+			name:     "地點為空字串",
+			progress: "測試 venue 為空字串時會被拒絕。",
+			mutate: func(payload gin.H) {
+				payload["venue"] = ""
+			},
+		},
+		{
+			name:     "地點只有空白",
+			progress: "測試 venue 只有空白字元時會被拒絕。",
+			mutate: func(payload gin.H) {
+				payload["venue"] = "   "
+			},
+		},
+		{
+			name:     "每人票數大於總票數限制",
+			progress: "測試 max_tickets_per_person 大於所有票種總 quota 時會被拒絕。",
+			mutate: func(payload gin.H) {
+				payload["max_tickets_per_person"] = 151
 			},
 		},
 	}

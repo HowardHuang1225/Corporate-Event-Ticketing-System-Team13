@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"time"
 	"ticketing-system/backend/model"
 
 	"github.com/google/uuid"
@@ -11,7 +12,7 @@ type EventRepository struct {
 	db *gorm.DB
 }
 
-func (r *EventRepository) List(status string, role string) ([]model.Event, error) {
+func (r *EventRepository) List(status string, role string, ticketType string, startFrom string, startTo string) ([]model.Event, error) {
 	var events []model.Event
 	q := r.db.Preload("TicketTypes").Preload("Creator")
 	if status != "" {
@@ -19,6 +20,19 @@ func (r *EventRepository) List(status string, role string) ([]model.Event, error
 	}
 	if role == "employee" {
 		q = q.Where("status IN ('published','closed')")
+	}
+	if ticketType != "" {
+		q = q.Where("events.id IN (SELECT event_id FROM ticket_types WHERE name = ?)", ticketType)
+	}
+	if startFrom != "" {
+		if t, err := time.Parse(time.RFC3339, startFrom); err == nil {
+			q = q.Where("start_time >= ?", t)
+		}
+	}
+	if startTo != "" {
+		if t, err := time.Parse(time.RFC3339, startTo); err == nil {
+			q = q.Where("start_time <= ?", t)
+		}
 	}
 	err := q.Order("created_at desc").Find(&events).Error
 	return events, err

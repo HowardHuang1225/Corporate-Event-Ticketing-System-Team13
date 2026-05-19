@@ -50,8 +50,8 @@ type Eligibility struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-func (s *Service) List(status string, role string) ([]model.Event, error) {
-	events, err := s.events.List(status, role)
+func (s *Service) List(status string, role string, ticketType string, startFrom string, startTo string) ([]model.Event, error) {
+	events, err := s.events.List(status, role, ticketType, startFrom, startTo)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list events")
 	}

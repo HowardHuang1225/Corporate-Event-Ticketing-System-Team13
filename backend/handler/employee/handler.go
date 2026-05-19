@@ -20,7 +20,13 @@ func New(events *eventsvc.Service, tickets *ticketsvc.Service) *Handler {
 }
 
 func (h *Handler) ListEvents(c *gin.Context) {
-	events, err := h.events.List(c.Query("status"), shared.Role(c))
+	events, err := h.events.List(
+		c.Query("status"),
+		shared.Role(c),
+		c.Query("ticket_type"),
+		c.Query("start_from"),
+		c.Query("start_to"),
+	)
 	if err != nil {
 		shared.WriteError(c, err)
 		return
