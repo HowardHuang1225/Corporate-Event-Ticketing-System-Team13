@@ -78,9 +78,13 @@ jobs:
     - name: Deploy and Inject Images to AKS
       run: |
         kubectl apply -f k8s/
-        kubectl set image deployment/frontend-deployment frontend=ghcr.io/${{ github.repository }}/frontend:latest --background=true || echo "Frontend not ready"
-        kubectl set image deployment/backend-deployment backend=ghcr.io/${{ github.repository }}/backend:latest --background=true || echo "Backend not ready"
-
+        
+        OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+        
+        kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest --background=true || echo "Frontend not ready"
+        kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest --background=true || echo "Backend not ready"
+    
     # 滾動重啟
     - name: Rollout Restart Updated Deployments
       run: |
