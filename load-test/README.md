@@ -29,7 +29,7 @@ Upload this generated zip when asking someone else to review the result. Do not 
 ### 100 users, 100 tickets
 
 ```bash
-RUN_LABEL=100v100q TOTAL_USERS=100 TOTAL_QUOTA=100 VUS=100 ITERATIONS=1 KEEP_DATA=1 ./load-test/run_load_test.sh
+RUN_LABEL=100v100q TOTAL_USERS=100 TOTAL_QUOTA=100 VUS=100 ITERATIONS=1 KEEP_DATA=0 ./load-test/run_load_test.sh
 ```
 
 ### 2000 users competing for 1000 tickets
@@ -58,6 +58,10 @@ RUN_LABEL=5000v5000q TOTAL_USERS=5000 TOTAL_QUOTA=5000 VUS=5000 ITERATIONS=1 MAX
 | STRICT_THRESHOLDS | Enable strict threshold failure | 0 |
 | FAIL_ON_THRESHOLD | Exit nonzero after collecting artifacts if k6 threshold fails | 0 |
 | ERROR_SAMPLE_RATE | Probability to log a sample error response body | 0.02 |
+| TEST_MODE | Test mode switch: `spike` (simultaneous burst) or `constant` (constant arrival rate) | spike |
+| RATE | Requests per second (RPS) when `TEST_MODE=constant` | 1000 |
+| PRE_ALLOCATED_VUS | Number of pre-allocated virtual users when `TEST_MODE=constant` | 500 |
+| MAX_VUS | Maximum allowed virtual users under heavy system load when `TEST_MODE=constant` | 2000 |
 
 ## Output files
 
@@ -106,17 +110,36 @@ When `TICKET_QUEUE_ENABLED=true`, `POST /v1/applications` may return `202 Accept
 Recommended queue-mode run:
 
 ```bash
-RUN_LABEL=5000v5000q-queue \
-TOTAL_USERS=5000 \
-TOTAL_QUOTA=5000 \
-VUS=5000 \
+RUN_LABEL=2000v2000q-queue \
+TOTAL_USERS=2000 \
+TOTAL_QUOTA=2000 \
+VUS=2000 \
 ITERATIONS=1 \
 MAX_DURATION=3m \
 HTTP_TIMEOUT=60s \
 SETTLE_SECONDS=120 \
-KEEP_DATA=1 \
+KEEP_DATA=0 \
 STRICT_THRESHOLDS=0 \
 ./load-test/run_load_test.sh
 ```
 
 For larger conceptual tests such as 50,000 users, increase `TOTAL_USERS`, `TOTAL_QUOTA`, `VUS`, and `SETTLE_SECONDS`. In queue mode, the first metric to watch is not immediate DB completion; it is whether requests enter the waiting room without 5xx. Then inspect DB/Redis after enough settle time to confirm the worker pool drains the queue safely.
+
+## Constant Arrival Rate Test
+
+```bash
+TEST_MODE=constant \
+RATE=1000 \
+MAX_DURATION=5s \
+PRE_ALLOCATED_VUS=1000 \
+MAX_VUS=2000 \
+RUN_LABEL=3s-burst-test \
+TOTAL_USERS=2000 \
+TOTAL_QUOTA=5000 \
+HTTP_TIMEOUT=60s \
+SETTLE_SECONDS=10 \
+KEEP_DATA=0 \
+STRICT_THRESHOLDS=0 \
+MAX_TICKETS_PER_PERSON=10 \
+./load-test/run_load_test.sh
+```
