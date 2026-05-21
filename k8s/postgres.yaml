@@ -60,6 +60,7 @@ spec:
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data # 精確對齊 Compose 的資料路徑
+          subPath: pgdata
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
