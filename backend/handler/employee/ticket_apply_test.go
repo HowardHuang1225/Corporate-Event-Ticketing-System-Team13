@@ -10,7 +10,7 @@ import (
 )
 
 func TestEmployeeApplyTicket(t *testing.T) {
-	t.Skip("Legacy logic per product requirement change: direct approval and no region locks.")
+	// t.Skip("Legacy logic per product requirement change: direct approval and no region locks.")
 	tasks := []utils.Task{
 		{
 			Description: "測試員工可以申請活動票券",
@@ -88,8 +88,8 @@ func ApplyTicketCreatesPendingApplication(t *testing.T, errs *utils.Errors) {
 		errs.Add("檢查申請票券回應", "expected quantity 1, got %d", body.Data.Quantity)
 		return
 	}
-	if body.Data.Status != "pending" {
-		errs.Add("檢查申請票券回應", "expected status pending, got %q", body.Data.Status)
+	if body.Data.Status != "approved" {
+		errs.Add("檢查申請票券回應", "expected status approved, got %q", body.Data.Status)
 		return
 	}
 
