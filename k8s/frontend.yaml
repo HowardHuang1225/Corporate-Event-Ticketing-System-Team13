@@ -50,4 +50,4 @@ spec:
     port: 8080        
     targetPort: 80    
     nodePort: 30080   # Local development friendly NodePort for external access (change to LoadBalancer for AKS deployment)
-  type: NodePort # Local development friendly service type (change to LoadBalancer for AKS deployment)
+  type: NodePort # Local development friendly service type (change to LoadBalancer for AKS deployment)# force trigger cd trigger 2026
