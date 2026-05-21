@@ -3,7 +3,13 @@ name: "CD to AKS"
 on:
   push:
     branches:
-      - feat/cd
+      - main
+    paths:
+      - 'k8s/**'
+      - 'frontend/**'
+      - 'backend/**'
+      - 'api/**' 
+      - docker-compose.yml
 
 permissions:
   contents: read
@@ -60,6 +66,7 @@ jobs:
 
     # Build Frontend (Triggered when frontend or api changes)
     - name: Build and Push Frontend Image
+      if: needs.check-changes.outputs.frontend == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./frontend
@@ -69,6 +76,7 @@ jobs:
 
     # Build Backend (Triggered when backend or api changes)
     - name: Build and Push Backend Image
+      if: needs.check-changes.outputs.backend == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./backend
