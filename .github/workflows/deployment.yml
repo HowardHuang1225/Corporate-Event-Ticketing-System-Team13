@@ -1,0 +1,36 @@
+name: Continuous Delivery to AKS
+
+on:
+  push:
+    branches:
+      - main
+      - feat/cd       
+    paths:
+      - 'k8s/**'
+
+jobs:
+  deploy-to-aks:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    # 使用萬能實體鑰匙，一秒讓 GitHub Actions 接管雲端 AKS
+    - name: Set Kubernetes Context
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
+
+    # 直接灌入萬人連線優化配置
+    - name: Deploy Infrastructure Configuration to AKS
+      run: |
+        kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/nginx-config.yaml
+        kubectl apply -f k8s/frontend.yaml
+
+    # 滾動重啟服務，吃進最新 Nginx 萬級連線
+    - name: Verify and Rollout Restart Deployment
+      run: |
+        kubectl rollout restart deployment/frontend-deployment || echo "No frontend deployment yet"
+        kubectl rollout restart deployment/backend-deployment || echo "No backend deployment yet"
