@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: corporate-event-ticketing-system-team13-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80 
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
+  ports:
+  - protocol: TCP
+    port: 8080        
+    targetPort: 80    
+    nodePort: 30080   # Local development friendly NodePort for external access (change to LoadBalancer for AKS deployment)
+  type: NodePort # Local development friendly service type (change to LoadBalancer for AKS deployment)
