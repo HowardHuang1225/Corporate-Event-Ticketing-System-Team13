@@ -1,4 +1,4 @@
-name: Continuous Delivery to AKS
+name: CD to AKS
 
 on:
   push:
@@ -79,11 +79,17 @@ jobs:
       run: |
         kubectl apply -f k8s/
         
-        OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-        REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+        OWNER_RAW="${{ github.repository_owner }}"
+        REPO_RAW="${{ github.event.repository.name }}"
         
-        kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest --background=true || echo "Frontend not ready"
-        kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest --background=true || echo "Backend not ready"
+        # GHCR 的路徑是 ghcr.io/{OWNER}/{REPO}，其中 OWNER 和 REPO 都是小寫的，所以這裡做一次轉換確保一致性
+        OWNER=${OWNER_RAW,,}
+        REPO=${REPO_RAW,,}
+
+        echo "[DEBUG] Real GHCR Path -> ghcr.io/$OWNER/$REPO"
+        
+        kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest
+        kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest
     
     # 滾動重啟
     - name: Rollout Restart Updated Deployments
