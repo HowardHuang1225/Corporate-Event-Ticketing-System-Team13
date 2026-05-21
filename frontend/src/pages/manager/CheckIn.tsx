@@ -345,7 +345,7 @@ export default function CheckIn() {
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
-                    {new Date(c.checked_at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(c.checked_at).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     <div style={{ color: 'var(--success)', fontSize: 10 }}>✅ 核銷</div>
                   </div>
                 </div>
