@@ -58,6 +58,28 @@ services:
   #     - GF_SECURITY_ADMIN_PASSWORD=admin
 
   # ==========================================
+  # Storage Services
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: ts_minio
+    restart: always
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
   # Application Services
   # ==========================================
   backend:
@@ -82,10 +104,17 @@ services:
       - TICKET_QUEUE_MAX_WAITING=${TICKET_QUEUE_MAX_WAITING}
       - TICKET_QUEUE_RESERVATION_TTL_SECONDS=${TICKET_QUEUE_RESERVATION_TTL_SECONDS}
       - TICKET_QUEUE_STATUS_TTL_SECONDS=${TICKET_QUEUE_STATUS_TTL_SECONDS}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
+      - MINIO_PUBLIC_ENDPOINT=${MINIO_PUBLIC_ENDPOINT}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   frontend:
@@ -93,7 +122,7 @@ services:
     container_name: ts_frontend
     restart: always
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8080}:80"
     environment:
       - PORT=80
     depends_on:
@@ -102,3 +131,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
