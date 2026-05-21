@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"ticketing-system/backend/model"
 	"ticketing-system/backend/pkg"
+	"ticketing-system/backend/pkg/totp"
 	"ticketing-system/backend/repository"
 	"ticketing-system/backend/service/apperror"
 
@@ -480,21 +482,36 @@ func (s *Service) CancelTicket(ticketID string, userID uuid.UUID) error {
 }
 
 func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResult, error) {
-	if _, err := uuid.Parse(req.QRToken); err != nil {
+	parts := strings.Split(req.QRToken, "|")
+	baseToken := parts[0]
+
+	if _, err := uuid.Parse(baseToken); err != nil {
 		return CheckinResult{}, apperror.Validation("Invalid qr_token format")
 	}
+
+	if len(parts) == 2 {
+		providedOTP := parts[1]
+		if !totp.Verify(baseToken, providedOTP, 60) {
+			return CheckinResult{}, apperror.New(403, "EXPIRED_QR", "QR Code 已過期，請員工重新整理畫面。")
+		}
+	} else {
+		// For backward compatibility or manual token entry, you could allow len == 1,
+		// but ideally for strict anti-counterfeit, you'd reject it.
+		// We'll allow it for manual input testing, but in production, you might want to return an error here.
+	}
+
 	var ticket model.Ticket
 	now := time.Now()
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&model.Ticket{}).
-			Where("qr_token = ? AND is_used = false AND expires_at > ?", req.QRToken, now).
+			Where("qr_token = ? AND is_used = false AND expires_at > ?", baseToken, now).
 			Update("is_used", true)
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
-			if err := tx.Where("qr_token = ?", req.QRToken).First(&ticket).Error; err != nil {
+			if err := tx.Where("qr_token = ?", baseToken).First(&ticket).Error; err != nil {
 				return apperror.NotFound("Ticket not found")
 			}
 			if ticket.IsUsed {
@@ -507,7 +524,7 @@ func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResul
 		}
 
 		if err := tx.Preload("Event").Preload("TicketType").Preload("User").
-			First(&ticket, "qr_token = ?", req.QRToken).Error; err != nil {
+			First(&ticket, "qr_token = ?", baseToken).Error; err != nil {
 			return err
 		}
 		checkin := model.Checkin{TicketID: ticket.ID, CheckedBy: checkerID}

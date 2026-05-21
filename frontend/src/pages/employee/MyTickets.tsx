@@ -1,14 +1,53 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import api from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
+import { generateTOTP } from '../../utils/totp'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     pending: '待審核', approved: '已核准', rejected: '已拒絕', cancelled: '已取消',
   }
   return <span className={`badge badge-${status}`}>{map[status] ?? status}</span>
+}
+
+function DynamicTicketQR({ baseToken }: { baseToken: string }) {
+  const [dynamicToken, setDynamicToken] = useState<string>('')
+  const [timeLeft, setTimeLeft] = useState(60)
+
+  useEffect(() => {
+    const updateToken = async () => {
+      const otp = await generateTOTP(baseToken, 60)
+      setDynamicToken(`${baseToken}|${otp}`)
+    }
+
+    updateToken()
+
+    const interval = setInterval(() => {
+      const currentSeconds = Math.floor(Date.now() / 1000)
+      const remainder = 60 - (currentSeconds % 60)
+      setTimeLeft(remainder)
+
+      if (remainder === 60) {
+        updateToken()
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [baseToken])
+
+  if (!dynamicToken) return <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>
+
+  return (
+    <div className="qr-container">
+      <QRCodeSVG value={dynamicToken} size={180} />
+      <div className="qr-token" style={{ fontSize: 11 }}>{dynamicToken}</div>
+      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+        防偽驗證碼將在 <strong style={{ color: 'var(--accent)' }}>{timeLeft}</strong> 秒後更新
+      </div>
+    </div>
+  )
 }
 
 export default function MyTickets() {
@@ -75,8 +114,8 @@ export default function MyTickets() {
                         <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}>
                           {expandedTicket === ticket.id ? '收起 QR' : '顯示 QR'}
                         </button>
-                        <button 
-                          className="btn btn-sm" 
+                        <button
+                          className="btn btn-sm"
                           style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
                           onClick={() => handleReturnTicket(ticket.id)}
                         >
@@ -86,12 +125,9 @@ export default function MyTickets() {
                     )}
                   </div>
                 </div>
-                {expandedTicket === ticket.id && (
+                {expandedTicket === ticket.id && !ticket.is_used && (
                   <div className="ticket-card-body">
-                    <div className="qr-container">
-                      <QRCodeSVG value={ticket.qr_token} size={180} />
-                      <div className="qr-token">{ticket.qr_token}</div>
-                    </div>
+                    <DynamicTicketQR baseToken={ticket.qr_token} />
                     <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
                       入場時出示此 QR Code 給現場工作人員掃描
                     </p>
