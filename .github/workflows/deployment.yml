@@ -88,8 +88,19 @@ jobs:
     # Apply configuration manifests and dynamically patch image paths
     - name: Deploy and Inject Images to AKS
       run: |
+        # 1. Create a temporary K8s credential registry key using the Action's built-in token
+        # This acts as a pass-card so AKS can pull from your private GHCR repository
+        kubectl create secret docker-registry ghcr-auth \
+          --docker-server=ghcr.io \
+          --docker-username=${{ github.actor }} \
+          --docker-password=${{ secrets.GITHUB_TOKEN }} \
+          --docker-email=team13@nthu.edu.tw \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        # 2. Apply your clean K8s YAML manifests
         kubectl apply -f k8s/
         
+        # 3. Inject the perfected lowercase registry paths
         OWNER="${{ steps.vars.outputs.owner }}"
         REPO="${{ steps.vars.outputs.repo }}"
 
@@ -97,13 +108,11 @@ jobs:
         
         kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest
         kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest
-    
-    # Trigger rolling restart for modified deployments to pull fresh images
-    - name: Rollout Restart Updated Deployments
-      run: |
-        if [ "${{ needs.check-changes.outputs.frontend }}" = "true" ]; then
-          kubectl rollout restart deployment/frontend-deployment
-        fi
-        if [ "${{ needs.check-changes.outputs.backend }}" = "true" ]; then
-          kubectl rollout restart deployment/backend-deployment
-        fi
+        
+        # 4. CRITICAL: Force both deployments to carry the 'ghcr-auth' key to bypass the Private lock
+        kubectl patch deployment frontend-deployment -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-auth\"}]}}}}"
+        kubectl patch deployment backend-deployment -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-auth\"}]}}}}"
+        
+        # 5. Trigger rolling restart to consume the newly authorized private images
+        kubectl rollout restart deployment/frontend-deployment || echo "ok"
+        kubectl rollout restart deployment/backend-deployment || echo "ok"
