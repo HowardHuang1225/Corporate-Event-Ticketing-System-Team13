@@ -4,11 +4,7 @@ on:
   push:
     branches:
       - feat/cd
-    paths:
-      - 'k8s/**'
-      - 'frontend/**'
-      - 'backend/**'
-      - 'api/**'      
+
 
 jobs:
   check-changes:
