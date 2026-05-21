@@ -333,7 +333,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "No file provided"))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if header.Size > 5*1024*1024 {
 		c.JSON(http.StatusRequestEntityTooLarge, shared.Error("VALIDATION_ERROR", "File size exceeds the 5MB limit"))
@@ -381,7 +381,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 
 	// 確保副檔名與內容相符
-	if ext != extFromMime && !(ext == "jpeg" && extFromMime == "jpg") {
+	if ext != extFromMime && (ext != "jpeg" || extFromMime != "jpg") {
 		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "File extension does not match the actual file content type"))
 		return
 	}
