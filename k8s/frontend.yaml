@@ -17,7 +17,7 @@ spec:
       containers:
       - name: frontend
         image: ghcr.io/HowardHuang1225/corporate-event-ticketing-system-team13/frontend:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         env:
