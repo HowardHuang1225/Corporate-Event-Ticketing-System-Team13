@@ -5,7 +5,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: frontend
@@ -27,6 +27,16 @@ spec:
           requests:
             cpu: "100m"
             memory: "128Mi"
+        # 👇 加上這段掛載設定！
+        volumeMounts:
+        - name: nginx-config-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf # 💡 僅覆蓋單一檔案，不破壞原容器內其他 Nginx 配置
+      # 👇 加上這段宣告資料來源！
+      volumes:
+      - name: nginx-config-volume
+        configMap:
+          name: nginx-config # 💡 對應剛才建立的 ConfigMap 名字
 ---
 apiVersion: v1
 kind: Service
