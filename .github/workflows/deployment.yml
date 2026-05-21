@@ -1,10 +1,16 @@
-name: CD to AKS
+name: "CD to AKS"
 
 on:
   push:
     branches:
       - feat/cd
 
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  
 
 jobs:
   check-changes:
@@ -36,6 +42,15 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
+    # Convert repository owner and name to strict lowercase to satisfy GHCR requirements
+    - name: Set lower-case environment variables
+      id: vars
+      run: |
+        OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+        echo "owner=$OWNER" >> $GITHUB_OUTPUT
+        echo "repo=$REPO" >> $GITHUB_OUTPUT
+
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
       with:
@@ -43,7 +58,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 前端打包 (當 frontend 或 api 有改時觸發)
+    # Build Frontend (Triggered when frontend or api changes)
     - name: Build and Push Frontend Image
       if: needs.check-changes.outputs.frontend == 'true'
       uses: docker/build-push-action@v5
@@ -51,9 +66,9 @@ jobs:
         context: ./frontend
         file: ./frontend/Dockerfile
         push: true
-        tags: ghcr.io/${{ github.repository }}/frontend:latest
+        tags: ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}/frontend:latest
 
-    # 後端打包 (當 backend 或 api 有改時觸發)
+    # Build Backend (Triggered when backend or api changes)
     - name: Build and Push Backend Image
       if: needs.check-changes.outputs.backend == 'true'
       uses: docker/build-push-action@v5
@@ -61,33 +76,29 @@ jobs:
         context: ./backend
         file: ./backend/Dockerfile
         push: true
-        tags: ghcr.io/${{ github.repository }}/backend:latest
+        tags: ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}/backend:latest
 
-    # 連線雲端 AKS 叢集
+    # Connect to Azure AKS Cluster
     - name: Set Kubernetes Context
       uses: azure/k8s-set-context@v3
       with:
         method: kubeconfig
         kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
 
-    # 套用配置
+    # Apply configuration manifests and dynamically patch image paths
     - name: Deploy and Inject Images to AKS
       run: |
         kubectl apply -f k8s/
         
-        OWNER_RAW="${{ github.repository_owner }}"
-        REPO_RAW="${{ github.event.repository.name }}"
-        
-        # GHCR 的路徑是 ghcr.io/{OWNER}/{REPO}，其中 OWNER 和 REPO 都是小寫的，所以這裡做一次轉換確保一致性
-        OWNER=${OWNER_RAW,,}
-        REPO=${REPO_RAW,,}
+        OWNER="${{ steps.vars.outputs.owner }}"
+        REPO="${{ steps.vars.outputs.repo }}"
 
         echo "[DEBUG] Real GHCR Path -> ghcr.io/$OWNER/$REPO"
         
         kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest
         kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest
     
-    # 滾動重啟
+    # Trigger rolling restart for modified deployments to pull fresh images
     - name: Rollout Restart Updated Deployments
       run: |
         if [ "${{ needs.check-changes.outputs.frontend }}" = "true" ]; then
