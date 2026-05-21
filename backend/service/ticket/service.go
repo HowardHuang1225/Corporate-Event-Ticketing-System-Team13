@@ -492,12 +492,8 @@ func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResul
 	if len(parts) == 2 {
 		providedOTP := parts[1]
 		if !totp.Verify(baseToken, providedOTP, 60) {
-			return CheckinResult{}, apperror.New(403, "EXPIRED_QR", "QR Code 已過期，請員工重新整理畫面。")
+			return CheckinResult{}, apperror.New(403, "EXPIRED_QR", "防偽 QR Code 已過期，請員工重新整理畫面。")
 		}
-	} else {
-		// For backward compatibility or manual token entry, you could allow len == 1,
-		// but ideally for strict anti-counterfeit, you'd reject it.
-		// We'll allow it for manual input testing, but in production, you might want to return an error here.
 	}
 
 	var ticket model.Ticket
