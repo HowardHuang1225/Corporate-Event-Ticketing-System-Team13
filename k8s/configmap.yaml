@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "ticket_db"
+  DB_MAX_OPEN_CONNS: "250"
+  DB_MAX_IDLE_CONNS: "25"
+  DB_CONN_MAX_LIFETIME_MINUTES: "5"
+  
+  REDIS_URL: "redis://redis-service:6379/0"
+
+  TICKET_QUEUE_ENABLED: "true"
+  TICKET_QUEUE_STREAM: "ticket:applications"
+  TICKET_QUEUE_GROUP: "ticket-workers"
+  TICKET_QUEUE_WORKERS: "5"
+  TICKET_QUEUE_MAX_WAITING: "10000"
+  TICKET_QUEUE_RESERVATION_TTL_SECONDS: "600"
+  TICKET_QUEUE_STATUS_TTL_SECONDS: "3600"
+  
+  GIN_MODE: "release"
+  PORT: "8001"
+  ALLOWED_ORIGINS: "http://localhost:30080"
