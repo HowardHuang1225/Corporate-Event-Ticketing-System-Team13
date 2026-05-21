@@ -26,7 +26,7 @@ RUN chown -R nginx:nginx /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Default port
-ENV PORT=80
+ENV PORT=8080
 
 # Use non-root user (Note: non-root users cannot bind to ports below 1024 by default in some envs, 
 # but Nginx Docker image has some workarounds or we can use 8080 as default)
@@ -36,6 +36,6 @@ ENV NGINX_ENTRYPOINT_QUIET_LOGS=1
 USER nginx
 
 # Expose port
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
