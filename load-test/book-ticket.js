@@ -10,6 +10,11 @@ const envData = new SharedArray('stress env', function () {
   return [JSON.parse(open('./stress_env.json'))];
 })[0];
 
+const TEST_MODE = __ENV.TEST_MODE || 'spike';
+const RATE = Number(__ENV.RATE || 1000);
+const PRE_ALLOCATED_VUS = Number(__ENV.PRE_ALLOCATED_VUS || 500);
+const MAX_VUS = Number(__ENV.MAX_VUS || 2000);
+
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8001/v1';
 const VUS = Number(__ENV.VUS || 1000);
 const ITERATIONS = Number(__ENV.ITERATIONS || 1);
@@ -25,15 +30,28 @@ if (VUS > envData.users.length) {
   throw new Error(`Invalid load test: VUS=${VUS} but only TOTAL_USERS=${envData.users.length}. Increase TOTAL_USERS or lower VUS.`);
 }
 
+const scenarioConfig = TEST_MODE === 'constant' 
+  ? {
+      constant_traffic: {
+        executor: 'constant-arrival-rate',
+        rate: RATE,
+        timeUnit: '1s',
+        duration: MAX_DURATION,
+        preAllocatedVUs: PRE_ALLOCATED_VUS,
+        maxVUs: MAX_VUS,
+      }
+    }
+  : {
+      mass_booking: {
+        executor: 'per-vu-iterations',
+        vus: VUS,
+        iterations: ITERATIONS,
+        maxDuration: MAX_DURATION,
+      }
+    };
+
 export const options = {
-  scenarios: {
-    mass_booking: {
-      executor: 'per-vu-iterations',
-      vus: VUS,
-      iterations: ITERATIONS,
-      maxDuration: MAX_DURATION,
-    },
-  },
+  scenarios: scenarioConfig,
   thresholds: STRICT_THRESHOLDS
     ? {
         http_req_failed: ['rate<0.05'],
@@ -42,7 +60,6 @@ export const options = {
       }
     : {},
 };
-
 const bookingSuccess = new Counter('booking_success');
 const bookingCreated201 = new Counter('booking_created_201');
 const bookingOK200 = new Counter('booking_ok_200');
