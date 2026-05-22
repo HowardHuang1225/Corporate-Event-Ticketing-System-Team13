@@ -1,3 +1,4 @@
+
 # Load Test Guide
 
 This folder contains k6 load tests for the corporate event ticketing system.
@@ -125,21 +126,100 @@ STRICT_THRESHOLDS=0 \
 
 For larger conceptual tests such as 50,000 users, increase `TOTAL_USERS`, `TOTAL_QUOTA`, `VUS`, and `SETTLE_SECONDS`. In queue mode, the first metric to watch is not immediate DB completion; it is whether requests enter the waiting room without 5xx. Then inspect DB/Redis after enough settle time to confirm the worker pool drains the queue safely.
 
-## Constant Arrival Rate Test
+## Additional k6 scenarios added
+
+### Smoke test
+
+Use this before a large test to confirm the deployed API is reachable and demo login works.
 
 ```bash
-TEST_MODE=constant \
-RATE=1000 \
-MAX_DURATION=5s \
-PRE_ALLOCATED_VUS=1000 \
-MAX_VUS=2000 \
-RUN_LABEL=3s-burst-test \
-TOTAL_USERS=2000 \
+BASE_ORIGIN=http://localhost:8001 BASE_URL=http://localhost:8001/v1 k6 run load-test/smoke.js
+```
+
+For Azure / HTTPS deployment, replace `BASE_ORIGIN` and `BASE_URL`:
+
+```bash
+BASE_ORIGIN=https://your-domain.example BASE_URL=https://your-domain.example/v1 k6 run load-test/smoke.js
+```
+
+### Read-heavy event browsing test
+
+This tests high-concurrency read traffic such as employees refreshing the event list and opening event detail pages. It uses `constant-arrival-rate` by default.
+
+```bash
+RUN_LABEL=read-heavy \
+K6_SCRIPT=read-heavy.js \
+TOTAL_USERS=5000 \
 TOTAL_QUOTA=5000 \
-HTTP_TIMEOUT=60s \
-SETTLE_SECONDS=10 \
-KEEP_DATA=0 \
+VUS=1000 \
+RATE=500 \
+DURATION=2m \
+PRE_ALLOCATED_VUS=500 \
+MAX_VUS=2000 \
+DISCARD_RESPONSE_BODIES=1 \
+KEEP_DATA=1 \
 STRICT_THRESHOLDS=0 \
-MAX_TICKETS_PER_PERSON=10 \
 ./load-test/run_load_test.sh
 ```
+
+### Mixed user journey test
+
+This simulates a more realistic flow: most iterations browse the event list, some open details, and a smaller portion submit booking requests.
+
+```bash
+RUN_LABEL=mixed-journey \
+K6_SCRIPT=mixed-journey.js \
+TOTAL_USERS=5000 \
+TOTAL_QUOTA=5000 \
+RATE=300 \
+DURATION=2m \
+PRE_ALLOCATED_VUS=300 \
+MAX_VUS=1500 \
+MIXED_BOOKING_RATIO=0.1 \
+READ_DETAIL_RATIO=0.2 \
+DISCARD_RESPONSE_BODIES=1 \
+SETTLE_SECONDS=120 \
+KEEP_DATA=1 \
+STRICT_THRESHOLDS=0 \
+./load-test/run_load_test.sh
+```
+
+### Constant-arrival-rate booking test
+
+This is useful for sustained throughput testing. Unlike the burst test, k6 starts iterations at a fixed arrival rate independent of backend response speed.
+
+```bash
+RUN_LABEL=booking-arrival-rate \
+K6_SCRIPT=constant-arrival-booking.js \
+TOTAL_USERS=12000 \
+TOTAL_QUOTA=12000 \
+RATE=300 \
+DURATION=2m \
+PRE_ALLOCATED_VUS=500 \
+MAX_VUS=3000 \
+DISCARD_RESPONSE_BODIES=1 \
+SETTLE_SECONDS=180 \
+KEEP_DATA=1 \
+STRICT_THRESHOLDS=0 \
+./load-test/run_load_test.sh
+```
+
+## Performance mode for large tests
+
+For large VU counts, use:
+
+```bash
+DISCARD_RESPONSE_BODIES=1 ERROR_SAMPLE_RATE=0
+```
+
+This reduces load-generator memory usage. For debugging smaller tests, keep response bodies and use a small `ERROR_SAMPLE_RATE` so failed responses can be inspected.
+
+## Event list Redis cache
+
+The backend can cache `GET /events` list responses in Redis using:
+
+```env
+EVENT_LIST_CACHE_TTL_SECONDS=15
+```
+
+Set it to `0` to disable the cache. The cache is short-lived and is invalidated on common event mutations. The scheduler also clears event-list cache after lifecycle updates.

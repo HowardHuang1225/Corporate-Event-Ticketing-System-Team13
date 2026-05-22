@@ -1,3 +1,4 @@
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { vu } from 'k6/execution';
@@ -23,6 +24,7 @@ const STRICT_THRESHOLDS = (__ENV.STRICT_THRESHOLDS || '0') === '1';
 const ERROR_SAMPLE_RATE = Number(__ENV.ERROR_SAMPLE_RATE || 0.02);
 const MAX_ERROR_BODY_LENGTH = Number(__ENV.MAX_ERROR_BODY_LENGTH || 500);
 const JWT_SECRET = __ENV.JWT_SECRET || 'dev-jwt-secret-change-in-prod-32chars!!';
+const DISCARD_RESPONSE_BODIES = (__ENV.DISCARD_RESPONSE_BODIES || '0') === '1';
 
 if (!Number.isInteger(VUS) || VUS <= 0) throw new Error(`VUS must be positive integer, got ${__ENV.VUS}`);
 if (!Number.isInteger(ITERATIONS) || ITERATIONS <= 0) throw new Error(`ITERATIONS must be positive integer, got ${__ENV.ITERATIONS}`);
@@ -51,7 +53,15 @@ const scenarioConfig = TEST_MODE === 'constant'
     };
 
 export const options = {
-  scenarios: scenarioConfig,
+  discardResponseBodies: DISCARD_RESPONSE_BODIES,
+  scenarios: {
+    mass_booking: {
+      executor: 'per-vu-iterations',
+      vus: VUS,
+      iterations: ITERATIONS,
+      maxDuration: MAX_DURATION,
+    },
+  },
   thresholds: STRICT_THRESHOLDS
     ? {
         http_req_failed: ['rate<0.05'],

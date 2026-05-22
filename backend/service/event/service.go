@@ -2,6 +2,11 @@ package event
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"strconv"
 	"time"
 
 	"ticketing-system/backend/model"
@@ -53,9 +58,27 @@ type Eligibility struct {
 }
 
 func (s *Service) List(status string, role string, ticketType string, startFrom string, startTo string) ([]model.Event, error) {
+	ctx := context.Background()
+	cacheKey := eventListCacheKey(status, role, ticketType, startFrom, startTo)
+	cacheTTL := eventListCacheTTL()
+	if s.redis != nil && cacheTTL > 0 {
+		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
+			var cached []model.Event
+			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				return cached, nil
+			}
+		}
+	}
+
 	events, err := s.events.List(status, role, ticketType, startFrom, startTo)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list events")
+	}
+
+	if s.redis != nil && cacheTTL > 0 {
+		if payload, err := json.Marshal(events); err == nil {
+			_ = s.redis.Set(ctx, cacheKey, payload, cacheTTL).Err()
+		}
 	}
 	return events, nil
 }
@@ -118,6 +141,7 @@ func (s *Service) Create(req CreateRequest, creatorID uuid.UUID) (model.Event, e
 	if err := s.db.Preload("TicketTypes").First(&event, event.ID).Error; err != nil {
 		return model.Event{}, apperror.Internal("Failed to load created event")
 	}
+	s.invalidateEventListCache(context.Background())
 	return event, nil
 }
 
@@ -184,6 +208,7 @@ func (s *Service) UpdateDraft(id string, req CreateRequest) (model.Event, error)
 		return model.Event{}, apperror.Internal("Failed to load updated event")
 	}
 	s.invalidateInventoryCache(context.Background(), event.ID)
+	s.invalidateEventListCache(context.Background())
 	return event, nil
 }
 
@@ -209,6 +234,7 @@ func (s *Service) DeleteDraft(id string) error {
 	if err != nil {
 		return apperror.Internal("Failed to delete event")
 	}
+	s.invalidateEventListCache(context.Background())
 	return nil
 }
 
@@ -224,6 +250,7 @@ func (s *Service) Publish(id string) (model.Event, error) {
 		return model.Event{}, apperror.Internal("Failed to publish event")
 	}
 	event.Status = "published"
+	s.invalidateEventListCache(context.Background())
 	return event, nil
 }
 
@@ -236,6 +263,7 @@ func (s *Service) Close(id string) (model.Event, error) {
 		return model.Event{}, apperror.Internal("Failed to close event")
 	}
 	event.Status = "closed"
+	s.invalidateEventListCache(context.Background())
 	return event, nil
 }
 
@@ -283,5 +311,44 @@ func (s *Service) invalidateInventoryCache(ctx context.Context, eventID uuid.UUI
 	}
 	for _, id := range ids {
 		s.redis.Del(ctx, "inventory_loaded:"+id)
+	}
+}
+
+func eventListCacheTTL() time.Duration {
+	raw := os.Getenv("EVENT_LIST_CACHE_TTL_SECONDS")
+	if raw == "" {
+		return 0
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func eventListCacheKey(status string, role string, ticketType string, startFrom string, startTo string) string {
+	parts := []string{status, role, ticketType, startFrom, startTo}
+	payload, _ := json.Marshal(parts)
+	sum := sha1.Sum(payload)
+	return "event:list:" + hex.EncodeToString(sum[:])
+}
+
+func (s *Service) invalidateEventListCache(ctx context.Context) {
+	if s.redis == nil {
+		return
+	}
+	var cursor uint64
+	for {
+		keys, next, err := s.redis.Scan(ctx, cursor, "event:list:*", 100).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = s.redis.Del(ctx, keys...).Err()
+		}
+		cursor = next
+		if cursor == 0 {
+			return
+		}
 	}
 }
