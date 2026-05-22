@@ -13,7 +13,7 @@ import (
 )
 
 func TestEmployeeEventEligibility(t *testing.T) {
-	t.Skip("Legacy logic per product requirement change: direct approval and no region locks.")
+	// t.Skip("Legacy logic per product requirement change: direct approval and no region locks.")
 	tasks := []utils.Task{
 		{
 			Description: "測試活動報名資格會依狀態、截止時間與廠區限制回傳結果",
@@ -71,14 +71,14 @@ func CheckEventEligibilityReturnsExpectedDecisions(t *testing.T, errs *utils.Err
 			wantEligible: false,
 			progress:     "測試已發布活動超過報名截止時間後不可報名。",
 		},
-		{
-			name:         "廠區限制不符不可報名",
-			status:       "published",
-			region:       "Hsinchu",
-			deadline:     now.Add(24 * time.Hour),
-			wantEligible: false,
-			progress:     "測試已發布活動的廠區限制與員工廠區不同時不可報名。",
-		},
+		// {
+		// 	name:         "廠區限制不符不可報名",
+		// 	status:       "published",
+		// 	region:       "Hsinchu",
+		// 	deadline:     now.Add(24 * time.Hour),
+		// 	wantEligible: false,
+		// 	progress:     "測試已發布活動的廠區限制與員工廠區不同時不可報名。",
+		// },
 	}
 
 	router := newEmployeeEventRouter(tx, users.Employee, "employee")
