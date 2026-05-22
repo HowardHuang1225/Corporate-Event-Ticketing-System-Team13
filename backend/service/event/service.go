@@ -38,6 +38,8 @@ type CreateRequest struct {
 	EndTime             time.Time `json:"end_time" binding:"required"`
 	ApplyDeadline       time.Time `json:"apply_deadline" binding:"required"`
 	RegionRestriction   *string   `json:"region_restriction"`
+	ImageURL            string    `json:"image_url"`
+	DocumentURL         string    `json:"document_url"`
 	MaxTicketsPerPerson int       `json:"max_tickets_per_person"`
 	TicketTypes         []struct {
 		Name       string `json:"name" binding:"required"`
@@ -86,6 +88,8 @@ func (s *Service) Create(req CreateRequest, creatorID uuid.UUID) (model.Event, e
 		ApplyDeadline:       req.ApplyDeadline,
 		Status:              "draft",
 		RegionRestriction:   req.RegionRestriction,
+		ImageURL:            req.ImageURL,
+		DocumentURL:         req.DocumentURL,
 		MaxTicketsPerPerson: maxTickets,
 		CreatedBy:           creatorID,
 	}
@@ -146,6 +150,8 @@ func (s *Service) UpdateDraft(id string, req CreateRequest) (model.Event, error)
 		event.EndTime = req.EndTime
 		event.ApplyDeadline = req.ApplyDeadline
 		event.RegionRestriction = req.RegionRestriction
+		event.ImageURL = req.ImageURL
+		event.DocumentURL = req.DocumentURL
 		event.MaxTicketsPerPerson = maxTickets
 		if err := tx.Save(&event).Error; err != nil {
 			return err

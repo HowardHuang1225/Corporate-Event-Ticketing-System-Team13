@@ -15,6 +15,7 @@ import (
 	"ticketing-system/backend/config"
 	"ticketing-system/backend/database"
 	"ticketing-system/backend/pkg"
+	"ticketing-system/backend/pkg/storage"
 	"ticketing-system/backend/routes"
 	"ticketing-system/backend/scheduler"
 
@@ -29,6 +30,7 @@ func main() {
 	cfg := config.Load()
 	db := database.Connect(cfg)
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
+	minioService := storage.NewMinioService(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucketName, cfg.MinioPublicEndpoint)
 	bootstrap.SeedDemoData(db)
 	scheduler.StartEventSchedulers(db, redisClient)
 
@@ -43,6 +45,7 @@ func main() {
 	routes.Register(router, routes.Dependencies{
 		DB:        db,
 		Redis:     redisClient,
+		Minio:     minioService,
 		JWTSecret: cfg.JWTSecret,
 	})
 

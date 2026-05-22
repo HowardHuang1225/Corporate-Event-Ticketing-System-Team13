@@ -57,7 +57,7 @@ func setupManagerEventTest(t *testing.T) (*gorm.DB, model.User, func(), error) {
 
 func newManagerEventRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
-	handler := New(eventsvc.New(repos), nil, nil)
+	handler := New(eventsvc.New(repos), nil, nil, nil)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

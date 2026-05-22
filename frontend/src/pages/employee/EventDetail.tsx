@@ -18,6 +18,7 @@ export default function EventDetail() {
   const qc = useQueryClient()
 
   const [showModal, setShowModal] = useState(false)
+  const [showImagePreview, setShowImagePreview] = useState(false)
   const [selectedType, setSelectedType] = useState('')
   const [quantity, setQuantity] = useState(1)
 
@@ -90,6 +91,25 @@ export default function EventDetail() {
           <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : event.status === 'ended' ? '已結束' : '已截止'}</span>
         </div>
         <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 20 }}>{event.description}</p>
+
+        {event.image_url && (
+          <div style={{ marginBottom: 20 }}>
+            <div 
+              style={{ display: 'inline-block', position: 'relative', cursor: 'pointer', maxWidth: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}
+              onClick={() => setShowImagePreview(true)}
+              title="點擊放大預覽"
+            >
+              <img src={event.image_url} alt="活動海報" style={{ display: 'block', maxWidth: '100%', maxHeight: 400, transition: 'transform 0.3s ease' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
+            </div>
+          </div>
+        )}
+        {event.document_url && (
+          <div style={{ marginBottom: 20 }}>
+            <a href={event.document_url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              📄 檢視活動附件 (PDF)
+            </a>
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {[
             { icon: <MapPin size={16} />, label: '地點', val: event.venue },
@@ -199,6 +219,20 @@ export default function EventDetail() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showImagePreview && event.image_url && (
+        <div className="modal-overlay" onClick={() => setShowImagePreview(false)} style={{ zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <button
+            onClick={() => setShowImagePreview(false)}
+            style={{ position: 'absolute', top: 24, right: 24, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', width: 48, height: 48, borderRadius: '50%', zIndex: 10, display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'background 0.2s' }}
+            onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.8)'}
+            onMouseOut={e => e.currentTarget.style.background = 'rgba(0,0,0,0.6)'}
+          >
+            ✕
+          </button>
+          <img src={event.image_url} alt="活動海報預覽" style={{ width: '90vw', height: '90vh', objectFit: 'contain' }} />
         </div>
       )}
     </div>

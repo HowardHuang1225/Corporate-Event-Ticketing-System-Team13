@@ -9,11 +9,17 @@ import (
 	"strings"
 
 	"ticketing-system/backend/handler/shared"
+	"ticketing-system/backend/pkg/storage"
 	eventsvc "ticketing-system/backend/service/event"
 	reportsvc "ticketing-system/backend/service/report"
 	ticketsvc "ticketing-system/backend/service/ticket"
 
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func validateCreatePayload(bodyBytes []byte) error {
@@ -156,10 +162,11 @@ type Handler struct {
 	events  *eventsvc.Service
 	tickets *ticketsvc.Service
 	reports *reportsvc.Service
+	storage *storage.MinioService
 }
 
-func New(events *eventsvc.Service, tickets *ticketsvc.Service, reports *reportsvc.Service) *Handler {
-	return &Handler{events: events, tickets: tickets, reports: reports}
+func New(events *eventsvc.Service, tickets *ticketsvc.Service, reports *reportsvc.Service, storage *storage.MinioService) *Handler {
+	return &Handler{events: events, tickets: tickets, reports: reports, storage: storage}
 }
 
 func (h *Handler) CreateEvent(c *gin.Context) {
@@ -318,4 +325,98 @@ func (h *Handler) EventStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, shared.OK(stats))
+}
+
+func (h *Handler) UploadFile(c *gin.Context) {
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "No file provided"))
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	if header.Size > 5*1024*1024 {
+		c.JSON(http.StatusRequestEntityTooLarge, shared.Error("VALIDATION_ERROR", "File size exceeds the 5MB limit"))
+		return
+	}
+
+	// Check extension
+	filename := header.Filename
+	dotIdx := strings.LastIndex(filename, ".")
+	if dotIdx == -1 || dotIdx == len(filename)-1 {
+		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Invalid filename: missing file extension"))
+		return
+	}
+	ext := strings.ToLower(filename[dotIdx+1:])
+	if ext != "png" && ext != "jpg" && ext != "jpeg" && ext != "pdf" {
+		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Only PNG, JPG, JPEG, and PDF files are allowed"))
+		return
+	}
+
+	// 1. MIME Type Spoofing 防禦 (Magic Number 內容檢測)
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		c.JSON(http.StatusInternalServerError, shared.Error("VALIDATION_ERROR", "Failed to read file for validation"))
+		return
+	}
+
+	// 重置檔案指標供後續讀取
+	if _, err := file.Seek(0, 0); err != nil {
+		c.JSON(http.StatusInternalServerError, shared.Error("VALIDATION_ERROR", "Failed to reset file pointer"))
+		return
+	}
+
+	detectedType := http.DetectContentType(buffer[:n])
+	allowedMimes := map[string]string{
+		"image/png":       "png",
+		"image/jpeg":      "jpg",
+		"application/pdf": "pdf",
+	}
+
+	extFromMime, exists := allowedMimes[detectedType]
+	if !exists {
+		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Invalid file content. Only PNG, JPG, JPEG, and PDF are allowed"))
+		return
+	}
+
+	// 確保副檔名與內容相符
+	if ext != extFromMime && (ext != "jpeg" || extFromMime != "jpg") {
+		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "File extension does not match the actual file content type"))
+		return
+	}
+
+	// 2. Pixel Flood 攻擊防禦 (圖片解析度炸彈檢測)
+	if ext == "png" || ext == "jpg" || ext == "jpeg" {
+		imgConfig, _, err := image.DecodeConfig(file)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Invalid image format"))
+			return
+		}
+		
+		// 重置檔案指標供後續上傳
+		if _, err := file.Seek(0, 0); err != nil {
+			c.JSON(http.StatusInternalServerError, shared.Error("VALIDATION_ERROR", "Failed to reset file pointer"))
+			return
+		}
+
+		// 限制圖片寬高最大為 4096px
+		if imgConfig.Width > 4096 || imgConfig.Height > 4096 {
+			c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Image resolution exceeds the limit of 4096x4096px"))
+			return
+		}
+	}
+
+	contentType := detectedType // 使用檢測出來的真實 Content-Type，不依賴前端傳值
+	
+	// Generate unique filename
+	objectName := fmt.Sprintf("%s.%s", uuid.New().String(), ext)
+
+	url, err := h.storage.UploadFile(c.Request.Context(), objectName, file, header.Size, contentType, filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, shared.Error("STORAGE_ERROR", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, shared.OK(gin.H{"url": url}))
 }
