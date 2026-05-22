@@ -80,7 +80,7 @@ func setupManagerApplicationTest(t *testing.T) (*gorm.DB, managerApplicationUser
 
 func newManagerApplicationRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
-	handler := New(nil, ticketsvc.New(repos), nil)
+	handler := New(nil, ticketsvc.New(repos), nil, nil)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -95,7 +95,7 @@ func newManagerApplicationRouter(db *gorm.DB, manager model.User) *gin.Engine {
 
 func newManagerBatchApplicationRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
-	handler := New(nil, ticketsvc.New(repos), nil)
+	handler := New(nil, ticketsvc.New(repos), nil, nil)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

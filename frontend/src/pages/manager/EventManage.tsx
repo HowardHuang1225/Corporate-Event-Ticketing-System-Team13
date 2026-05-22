@@ -9,7 +9,7 @@ function StatusBadge({ status, publishTime }: { status: EventStatus, publishTime
   const m: Record<string, string> = { draft: '草稿', published: '發布中', closed: '已截止', ended: '已結束' }
   const isScheduled = status === 'draft' && publishTime && new Date(publishTime) > new Date()
   const isPendingPublish = status === 'draft' && publishTime && new Date(publishTime) <= new Date()
-  
+
   if (isScheduled) {
     return <span className="badge badge-draft">
       <Clock size={12} /> 排程中
@@ -21,12 +21,14 @@ function StatusBadge({ status, publishTime }: { status: EventStatus, publishTime
       <Clock size={12} /> 發布處理中
     </span>
   }
-  
+
   return <span className={`badge badge-${status}`}>{m[status] ?? status}</span>
 }
 
 const EMPTY_FORM = {
   title: '', description: '', venue: '',
+  image_url: '',
+  document_url: '',
   publish_time: '', start_time: '', apply_deadline: '', end_time: '',
   region_restriction: '', max_tickets_per_person: 1,
   ticket_types: [{ name: '一般票', total_quota: 100 }],
@@ -115,6 +117,38 @@ export default function EventManage() {
     onSuccess: () => { toast.success('已截止報名'); qc.invalidateQueries({ queryKey: ['events-manage'] }) },
   })
 
+  const uploadImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (file.size > 5 * 1024 * 1024) throw new Error('檔案大小不能超過 5MB')
+      if (!file.type.startsWith('image/')) throw new Error('請上傳圖片檔案')
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      return res.data.data.url
+    },
+    onSuccess: (url) => {
+      toast.success('圖片上傳成功！')
+      setForm(f => ({ ...f, image_url: url }))
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message ?? err.message ?? '上傳失敗')
+  })
+
+  const uploadDocMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (file.size > 5 * 1024 * 1024) throw new Error('檔案大小不能超過 5MB')
+      if (file.type !== 'application/pdf') throw new Error('請上傳 PDF 檔案')
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      return res.data.data.url
+    },
+    onSuccess: (url) => {
+      toast.success('附件上傳成功！')
+      setForm(f => ({ ...f, document_url: url }))
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message ?? err.message ?? '上傳失敗')
+  })
+
   const handleSave = () => {
     const payload = {
       ...form,
@@ -137,6 +171,8 @@ export default function EventManage() {
       title: e.title || '',
       description: e.description || '',
       venue: e.venue || '',
+      image_url: e.image_url || '',
+      document_url: e.document_url || '',
       publish_time: formatToLocalDatetime(e.publish_time),
       start_time: formatToLocalDatetime(e.start_time),
       apply_deadline: formatToLocalDatetime(e.apply_deadline),
@@ -249,6 +285,42 @@ export default function EventManage() {
             <div className="form-group">
               <label className="form-label">地點 *</label>
               <input className="form-input" value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">活動圖片 </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => e.target.files?.[0] && uploadImageMutation.mutate(e.target.files[0])}
+                  disabled={uploadImageMutation.isPending}
+                />
+                {uploadImageMutation.isPending && <span className="spinner" style={{ width: 16, height: 16 }}></span>}
+              </div>
+              {form.image_url && (
+                <div style={{ marginTop: 8 }}>
+                  <img src={form.image_url} alt="cover" style={{ height: 60, borderRadius: 4, objectFit: 'cover' }} />
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>圖片已上傳成功</div>
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">活動文件 (僅限 PDF)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={e => e.target.files?.[0] && uploadDocMutation.mutate(e.target.files[0])}
+                  disabled={uploadDocMutation.isPending}
+                />
+                {uploadDocMutation.isPending && <span className="spinner" style={{ width: 16, height: 16 }}></span>}
+              </div>
+              {form.document_url && (
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--success)' }}>
+                  📄 PDF 附件已上傳成功
+                </div>
+              )}
             </div>
             <div className="form-row">
               <div className="form-group">

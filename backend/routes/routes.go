@@ -14,6 +14,7 @@ import (
 	eventsvc "ticketing-system/backend/service/event"
 	reportsvc "ticketing-system/backend/service/report"
 	ticketsvc "ticketing-system/backend/service/ticket"
+	"ticketing-system/backend/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -23,10 +24,14 @@ import (
 type Dependencies struct {
 	DB        *gorm.DB
 	Redis     *redis.Client
+	Minio     *storage.MinioService
 	JWTSecret string
 }
 
 func Register(router *gin.Engine, deps Dependencies) {
+	// 限制 multipart memory 最大為 8 MiB，防範大檔案 DoS 攻擊
+	router.MaxMultipartMemory = 8 << 20
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -49,7 +54,7 @@ func Register(router *gin.Engine, deps Dependencies) {
 
 	authHandler := authhandler.New(authService)
 	employeeHandler := employeehandler.New(eventService, ticketService)
-	managerHandler := managerhandler.New(eventService, ticketService, reportService)
+	managerHandler := managerhandler.New(eventService, ticketService, reportService, deps.Minio)
 	hrHandler := hrhandler.New(reportService)
 
 	v1 := router.Group("/v1")
@@ -82,6 +87,8 @@ func Register(router *gin.Engine, deps Dependencies) {
 
 	api.POST("/checkin", middleware.RequireRole("event_manager"), managerHandler.Checkin)
 	api.GET("/checkins", middleware.RequireRole("event_manager"), managerHandler.ListCheckins)
+
+	api.POST("/upload", middleware.RequireRole("event_manager"), managerHandler.UploadFile)
 
 	api.GET("/reports/events/:id/stats", middleware.RequireRole("event_manager", "hr"), func(c *gin.Context) {
 		if c.GetString("role") == "hr" {

@@ -72,7 +72,7 @@ func setupManagerTicketLifecycleTest(t *testing.T) (*gorm.DB, managerApplication
 
 func newManagerTicketLifecycleRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
-	handler := New(nil, ticketsvc.New(repos), nil)
+	handler := New(nil, ticketsvc.New(repos), nil, nil)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
