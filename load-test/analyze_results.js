@@ -1,3 +1,4 @@
+
 const fs = require('fs');
 const path = require('path');
 
@@ -50,6 +51,19 @@ const forbid403 = num(summary, 'booking_forbidden_403');
 const tooMany429 = num(summary, 'booking_too_many_requests_429');
 const other = num(summary, 'booking_other_status');
 const reqs = num(summary, 'http_reqs');
+const readListOK = num(summary, 'read_list_ok');
+const readDetailOK = num(summary, 'read_detail_ok');
+const readServerErrors = num(summary, 'read_server_error');
+const readOtherErrors = num(summary, 'read_other_error');
+const mixedReadOK = num(summary, 'mixed_read_ok');
+const mixedDetailOK = num(summary, 'mixed_detail_ok');
+const mixedBookingAccepted = num(summary, 'mixed_booking_accepted');
+const mixedBookingCreated200201 = num(summary, 'mixed_booking_created_200_201');
+const mixedBookingQueued202 = num(summary, 'mixed_booking_queued_202');
+const mixedBusinessReject400 = num(summary, 'mixed_business_reject_400');
+const mixedSoldOut409 = num(summary, 'mixed_sold_out_409');
+const mixedServerErrors = num(summary, 'mixed_server_error');
+const mixedOtherErrors = num(summary, 'mixed_other_error');
 const dbConsumed = Number(db.ticket_type_consumed_by_db ?? NaN);
 const dbRemaining = Number(db.ticket_type_remaining ?? NaN);
 const dbQuota = Number(db.ticket_type_total_quota ?? NaN);
@@ -61,7 +75,8 @@ const streamAfter = db.redis_stream_length_after ?? db.redis_stream_length ?? 'N
 const streamDelta = db.redis_stream_length_delta ?? 'N/A';
 const streamPending = db.redis_stream_pending ?? 'N/A';
 const inventoryEquationOK = Number.isFinite(dbConsumed) && Number.isFinite(dbRemaining) && Number.isFinite(dbQuota) && dbConsumed + dbRemaining === dbQuota;
-const successMatchesDb = Number.isFinite(appCount) && Number.isFinite(ticketCount) && appCount === ticketCount && appCount === success;
+const acceptedForDbCheck = success > 0 ? success : mixedBookingAccepted;
+const successMatchesDb = Number.isFinite(appCount) && Number.isFinite(ticketCount) && appCount === ticketCount && appCount === acceptedForDbCheck;
 
 const md = `# Load Test Run Summary
 
@@ -85,6 +100,9 @@ const md = `# Load Test Run Summary
 | ITERATIONS per VU | ${process.env.ITERATIONS ?? 'N/A'} |
 | MAX_DURATION | ${process.env.MAX_DURATION ?? 'N/A'} |
 | BASE_URL | ${process.env.BASE_URL ?? 'http://localhost:8001/v1'} |
+| K6_SCRIPT | ${process.env.K6_SCRIPT ?? 'book-ticket.js'} |
+| DISCARD_RESPONSE_BODIES | ${process.env.DISCARD_RESPONSE_BODIES ?? '0'} |
+| RATE / TIME_UNIT / DURATION | ${(process.env.RATE ?? 'N/A') + ' / ' + (process.env.TIME_UNIT ?? 'N/A') + ' / ' + (process.env.DURATION ?? 'N/A')} |
 
 ## k6 business result
 
@@ -109,6 +127,21 @@ const md = `# Load Test Run Summary
 | redis_stream_length_after | ${streamAfter} |
 | redis_stream_length_delta_this_run | ${streamDelta} |
 | redis_stream_pending | ${streamPending} |
+| read_list_ok | ${readListOK} |
+| read_detail_ok | ${readDetailOK} |
+| read_server_error | ${readServerErrors} |
+| read_other_error | ${readOtherErrors} |
+| read_success_rate | ${rate(summary, 'read_success_rate')} |
+| mixed_read_ok | ${mixedReadOK} |
+| mixed_detail_ok | ${mixedDetailOK} |
+| mixed_booking_accepted | ${mixedBookingAccepted} |
+| mixed_booking_created_200_201 | ${mixedBookingCreated200201} |
+| mixed_booking_queued_202 | ${mixedBookingQueued202} |
+| mixed_business_reject_400 | ${mixedBusinessReject400} |
+| mixed_sold_out_409 | ${mixedSoldOut409} |
+| mixed_server_error | ${mixedServerErrors} |
+| mixed_other_error | ${mixedOtherErrors} |
+| mixed_success_rate | ${rate(summary, 'mixed_success_rate')} |
 
 ## DB / Redis verification
 
@@ -119,7 +152,7 @@ ${dbText || 'db-summary.txt not found'}
 ## Quick interpretation
 
 - Inventory equation \`consumed_by_db + remaining = total_quota\`: **${inventoryEquationOK ? 'OK' : 'NEEDS_CHECK'}**.
-- Applications count = tickets count = k6 accepted/created success count: **${successMatchesDb ? 'OK' : 'NEEDS_CHECK'}**.
+- Applications count = tickets count = accepted booking count for this script: **${successMatchesDb ? 'OK' : 'NEEDS_CHECK'}**.
 - If server errors are high while quota is not exhausted, this is likely backend/DB throughput or transaction contention, not normal sold-out behavior.
 - If VUS is larger than TOTAL_USERS, the test is invalid because some VUs do not have real user IDs.
 - If p95 is high and server errors are high, reduce VUS to find the maximum stable point, then compare after optimization/scale-out.

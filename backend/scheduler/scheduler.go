@@ -2,10 +2,10 @@ package scheduler
 
 import (
 	"context"
-	"log"
-	"time"
 	"errors"
+	"log"
 	"ticketing-system/backend/model"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -74,7 +74,9 @@ func runEventScheduler(db *gorm.DB, rdb *redis.Client, interval time.Duration) {
 
 	if err := updateEventStatuses(db, time.Now()); err != nil {
 		log.Printf("Scheduler error: failed to update event statuses: %v", err)
+		return
 	}
+	invalidateEventListCache(ctx, rdb)
 }
 
 func acquireEventSchedulerLock(ctx context.Context, rdb *redis.Client, interval time.Duration) bool {
@@ -94,7 +96,7 @@ func acquireEventSchedulerLock(ctx context.Context, rdb *redis.Client, interval 
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return false 
+			return false
 		}
 
 		log.Printf("Scheduler warning: failed to acquire Redis lock, running without lock: %v", err)
@@ -117,10 +119,11 @@ func updateEventStatuses(db *gorm.DB, now time.Time) error {
 		if _, err := publishDueDrafts(tx, now); err != nil {
 			return err
 		}
-		if err := closeExpiredApplications(tx, now); err != nil {
+		if _, err := closeExpiredApplications(tx, now); err != nil {
 			return err
 		}
-		return endFinishedEvents(tx, now)
+		_, err := endFinishedEvents(tx, now)
+		return err
 	})
 }
 
@@ -144,14 +147,36 @@ func publishDueDrafts(db *gorm.DB, now time.Time) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
-func closeExpiredApplications(db *gorm.DB, now time.Time) error {
-	return db.Model(&model.Event{}).
+func closeExpiredApplications(db *gorm.DB, now time.Time) (int64, error) {
+	result := db.Model(&model.Event{}).
 		Where("status = ? AND apply_deadline <= ?", "published", now).
-		Update("status", "closed").Error
+		Update("status", "closed")
+	return result.RowsAffected, result.Error
 }
 
-func endFinishedEvents(db *gorm.DB, now time.Time) error {
-	return db.Model(&model.Event{}).
+func endFinishedEvents(db *gorm.DB, now time.Time) (int64, error) {
+	result := db.Model(&model.Event{}).
 		Where("status IN ? AND end_time <= ?", []string{"published", "closed"}, now).
-		Update("status", "ended").Error
+		Update("status", "ended")
+	return result.RowsAffected, result.Error
+}
+
+func invalidateEventListCache(ctx context.Context, rdb *redis.Client) {
+	if rdb == nil {
+		return
+	}
+	var cursor uint64
+	for {
+		keys, next, err := rdb.Scan(ctx, cursor, "event:list:*", 100).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = rdb.Del(ctx, keys...).Err()
+		}
+		cursor = next
+		if cursor == 0 {
+			return
+		}
+	}
 }
