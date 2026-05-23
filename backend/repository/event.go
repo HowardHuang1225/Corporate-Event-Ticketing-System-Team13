@@ -17,7 +17,7 @@ func (r *EventRepository) List(status string, role string, ticketType string, st
 	q := r.db.Preload("TicketTypes").Preload("Creator")
 	if status != "" {
 		if status == "ended" {
-			q = q.Where("status IN ('published','closed') AND end_time <= ?", time.Now())
+			q = q.Where("status = 'ended' OR (status IN ('published','closed') AND end_time <= ?)", time.Now())
 		} else if status == "published" || status == "closed" {
 			q = q.Where("status = ? AND end_time > ?", status, time.Now())
 		} else {
