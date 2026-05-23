@@ -350,6 +350,8 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 	}).Err()
 	_ = s.redis.Expire(ctx, statusKey, s.queue.StatusTTL).Err()
 	_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, msg.ID).Err()
+	s.invalidateMyApplicationsCache(ctx, job.UserID.String())
+	s.invalidateMyTicketsCache(ctx, job.UserID.String())
 	if created {
 		log.Printf("ticket queue job approved app=%s stream_id=%s", app.ID.String(), msg.ID)
 	}

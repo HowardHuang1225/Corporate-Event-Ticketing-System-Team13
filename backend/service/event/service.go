@@ -65,6 +65,9 @@ func (s *Service) List(status string, role string, ticketType string, startFrom 
 		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
 			var cached []model.Event
 			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				for i := range cached {
+					applyTimeBasedStatus(&cached[i])
+				}
 				return cached, nil
 			}
 		}
@@ -73,6 +76,10 @@ func (s *Service) List(status string, role string, ticketType string, startFrom 
 	events, err := s.events.List(status, role, ticketType, startFrom, startTo)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list events")
+	}
+
+	for i := range events {
+		applyTimeBasedStatus(&events[i])
 	}
 
 	if s.redis != nil && cacheTTL > 0 {

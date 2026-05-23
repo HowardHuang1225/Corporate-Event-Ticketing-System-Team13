@@ -16,10 +16,16 @@ func (r *EventRepository) List(status string, role string, ticketType string, st
 	var events []model.Event
 	q := r.db.Preload("TicketTypes").Preload("Creator")
 	if status != "" {
-		q = q.Where("status = ?", status)
+		if status == "ended" {
+			q = q.Where("status IN ('published','closed') AND end_time <= ?", time.Now())
+		} else if status == "published" || status == "closed" {
+			q = q.Where("status = ? AND end_time > ?", status, time.Now())
+		} else {
+			q = q.Where("status = ?", status)
+		}
 	}
-	if role == "employee" {
-		q = q.Where("status IN ('published','closed')")
+	if role != "event_manager" {
+		q = q.Where("status IN ('published','closed')").Where("end_time > ?", time.Now())
 	}
 	if ticketType != "" {
 		q = q.Where("events.id IN (SELECT event_id FROM ticket_types WHERE name = ?)", ticketType)

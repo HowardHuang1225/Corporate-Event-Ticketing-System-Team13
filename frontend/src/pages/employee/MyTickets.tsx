@@ -96,7 +96,9 @@ export default function MyTickets() {
         <div style={{ marginBottom: 32 }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>🎫 電子票券</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {allTickets.map((ticket: any) => (
+            {allTickets.map((ticket: any) => {
+              const isExpired = new Date(ticket.expires_at) < new Date()
+              return (
               <div key={ticket.id} className="ticket-card">
                 <div className="ticket-card-header">
                   <div>
@@ -106,10 +108,10 @@ export default function MyTickets() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span className={`badge ${ticket.is_used ? 'badge-used' : 'badge-unused'}`}>
-                      {ticket.is_used ? '已核銷' : '未使用'}
+                    <span className={`badge ${ticket.is_used ? 'badge-used' : (isExpired ? 'badge-rejected' : 'badge-unused')}`}>
+                      {ticket.is_used ? '已核銷' : (isExpired ? '已過期' : '未使用')}
                     </span>
-                    {!ticket.is_used && (
+                    {!ticket.is_used && !isExpired && (
                       <>
                         <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)}>
                           {expandedTicket === ticket.id ? '收起 QR' : '顯示 QR'}
@@ -125,7 +127,7 @@ export default function MyTickets() {
                     )}
                   </div>
                 </div>
-                {expandedTicket === ticket.id && !ticket.is_used && (
+                {expandedTicket === ticket.id && !ticket.is_used && !isExpired && (
                   <div className="ticket-card-body">
                     <DynamicTicketQR baseToken={ticket.qr_token} />
                     <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
@@ -134,7 +136,7 @@ export default function MyTickets() {
                   </div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         </div>
       )}

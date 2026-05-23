@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -287,14 +288,37 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 	if !created {
 		return ApplyResult{Application: existingApp, Created: false}, nil
 	}
+	s.invalidateMyApplicationsCache(context.Background(), userID.String())
 	return ApplyResult{Application: createdApp, Created: true}, nil
 }
 
 func (s *Service) MyApplications(userID string) ([]model.Application, error) {
+	ctx := context.Background()
+	cacheKey := "user:applications:" + userID
+
+	// 1. 查 Redis
+	if s.redis != nil {
+		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
+			var cached []model.Application
+			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				return cached, nil
+			}
+		}
+	}
+
+	// 2. 查 DB
 	apps, err := s.applications.ListMy(userID)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list applications")
 	}
+
+	// 3. 寫回 Redis (5秒短期快取，防高併發刷頁面)
+	if s.redis != nil {
+		if payload, err := json.Marshal(apps); err == nil {
+			_ = s.redis.Set(ctx, cacheKey, payload, 5*time.Second).Err()
+		}
+	}
+
 	return apps, nil
 }
 
@@ -352,6 +376,8 @@ func (s *Service) ApproveApplication(applicationID string, reviewerID uuid.UUID)
 	if err := s.db.Preload("Tickets").First(&app, app.ID).Error; err != nil {
 		return model.Application{}, apperror.Internal("Failed to load application")
 	}
+	s.invalidateMyApplicationsCache(context.Background(), app.UserID.String())
+	s.invalidateMyTicketsCache(context.Background(), app.UserID.String())
 	return app, nil
 }
 
@@ -389,14 +415,37 @@ func (s *Service) RejectApplication(applicationID string, reviewerID uuid.UUID, 
 	}); err != nil {
 		return model.Application{}, err
 	}
+	s.invalidateMyApplicationsCache(context.Background(), app.UserID.String())
 	return app, nil
 }
 
 func (s *Service) MyTickets(userID string) ([]model.Ticket, error) {
+	ctx := context.Background()
+	cacheKey := "user:tickets:" + userID
+
+	// 1. 查 Redis
+	if s.redis != nil {
+		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
+			var cached []model.Ticket
+			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				return cached, nil
+			}
+		}
+	}
+
+	// 2. 查 DB
 	tickets, err := s.tickets.ListMy(userID)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list tickets")
 	}
+
+	// 3. 寫回 Redis (5秒短期快取)
+	if s.redis != nil {
+		if payload, err := json.Marshal(tickets); err == nil {
+			_ = s.redis.Set(ctx, cacheKey, payload, 5*time.Second).Err()
+		}
+	}
+
 	return tickets, nil
 }
 
@@ -436,6 +485,8 @@ func (s *Service) CancelApplication(applicationID string, userID uuid.UUID) erro
 	if err != nil {
 		return apperror.Internal("Failed to cancel application")
 	}
+	s.invalidateMyApplicationsCache(context.Background(), userID.String())
+	s.invalidateMyTicketsCache(context.Background(), userID.String())
 	return nil
 }
 
@@ -478,6 +529,8 @@ func (s *Service) CancelTicket(ticketID string, userID uuid.UUID) error {
 	if err != nil {
 		return apperror.Internal("Failed to return ticket")
 	}
+	s.invalidateMyApplicationsCache(context.Background(), userID.String())
+	s.invalidateMyTicketsCache(context.Background(), userID.String())
 	return nil
 }
 
@@ -559,4 +612,16 @@ func isRetryableApplyError(err error) bool {
 		}
 	}
 	return errors.Is(err, gorm.ErrInvalidTransaction)
+}
+
+func (s *Service) invalidateMyApplicationsCache(ctx context.Context, userID string) {
+	if s.redis != nil {
+		_ = s.redis.Del(ctx, "user:applications:"+userID).Err()
+	}
+}
+
+func (s *Service) invalidateMyTicketsCache(ctx context.Context, userID string) {
+	if s.redis != nil {
+		_ = s.redis.Del(ctx, "user:tickets:"+userID).Err()
+	}
 }

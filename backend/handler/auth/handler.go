@@ -18,6 +18,8 @@ func New(service *authsvc.Service) *Handler {
 }
 
 func (h *Handler) Login(c *gin.Context) {
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	
 	var req authsvc.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", err.Error()))

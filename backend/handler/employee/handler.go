@@ -20,7 +20,11 @@ func New(events *eventsvc.Service, tickets *ticketsvc.Service) *Handler {
 }
 
 func (h *Handler) ListEvents(c *gin.Context) {
-	c.Header("Cache-Control", "public, max-age=5")
+	if shared.Role(c) == "employee" {
+		c.Header("Cache-Control", "public, max-age=5")
+	} else {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	}
 	events, err := h.events.List(
 		c.Query("status"),
 		shared.Role(c),
@@ -36,7 +40,11 @@ func (h *Handler) ListEvents(c *gin.Context) {
 }
 
 func (h *Handler) GetEvent(c *gin.Context) {
-	c.Header("Cache-Control", "public, max-age=5")
+	if shared.Role(c) == "employee" {
+		c.Header("Cache-Control", "public, max-age=5")
+	} else {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	}
 	event, err := h.events.Get(c.Param("id"))
 	if err != nil {
 		shared.WriteError(c, err)

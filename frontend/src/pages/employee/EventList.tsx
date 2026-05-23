@@ -45,7 +45,12 @@ export default function EventList() {
           <option value="">全部狀態</option>
           <option value="published">發布中</option>
           <option value="closed">已截止</option>
-          {user?.role === 'event_manager' && <option value="draft">草稿</option>}
+          {user?.role === 'event_manager' && (
+            <>
+              <option value="draft">草稿</option>
+              <option value="ended">已結束</option>
+            </>
+          )}
         </select>
         <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>共 {events.length} 個活動</span>
       </div>
@@ -59,17 +64,9 @@ export default function EventList() {
         <div className="event-grid">
           {events.map((event: any) => (
             <div key={event.id} className="card card-clickable" onClick={() => navigate(`/events/${event.id}`)}>
-              {event.image_url && (
-                <div style={{ margin: '-20px -20px 16px -20px', height: 160, overflow: 'hidden', borderTopLeftRadius: 'var(--radius)', borderTopRightRadius: 'var(--radius)' }}>
-                  <img src={event.image_url} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div className="event-card-title">
                   {event.title}
-                  {event.document_url && (
-                    <span style={{ fontSize: 12, marginLeft: 8, color: 'var(--primary)', background: 'var(--primary-light)', padding: '2px 6px', borderRadius: 4 }}></span>
-                  )}
                 </div>
                 <StatusBadge status={event.status} />
               </div>
