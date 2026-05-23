@@ -16,11 +16,12 @@ func (r *EventRepository) List(status string, role string, ticketType string, st
 	var events []model.Event
 	q := r.db.Preload("TicketTypes").Preload("Creator")
 	if status != "" {
-		if status == "ended" {
+		switch status {
+		case "ended":
 			q = q.Where("status = 'ended' OR (status IN ('published','closed') AND end_time <= ?)", time.Now())
-		} else if status == "published" || status == "closed" {
+		case "published", "closed":
 			q = q.Where("status = ? AND end_time > ?", status, time.Now())
-		} else {
+		default:
 			q = q.Where("status = ?", status)
 		}
 	}
