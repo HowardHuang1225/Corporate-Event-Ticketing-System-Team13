@@ -104,7 +104,7 @@ jobs:
           --dry-run=client -o yaml | kubectl apply -f -
 
         # 2. Apply your clean K8s YAML manifests
-        kubectl apply -f k8s/
+        kubectl apply -f k8s/ -R
         
         # 3. Inject the perfected lowercase registry paths
         OWNER="${{ steps.vars.outputs.owner }}"
@@ -122,3 +122,6 @@ jobs:
         # 5. Trigger rolling restart to consume the newly authorized private images
         kubectl rollout restart deployment/frontend-deployment || echo "ok"
         kubectl rollout restart deployment/backend-deployment || echo "ok"
+
+        kubectl rollout restart deployment/prometheus-core -n monitoring || echo "ok"
+        kubectl rollout restart deployment/grafana -n monitoring || echo "ok"

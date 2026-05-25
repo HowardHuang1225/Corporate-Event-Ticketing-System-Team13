@@ -22,6 +22,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
+	// 引入 Prometheus 官方的 HTTP 處理套件
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -49,6 +52,8 @@ func main() {
 		JWTSecret: cfg.JWTSecret,
 	})
 
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	
 	fmt.Printf("Server running on :%s\n", cfg.Port)
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
