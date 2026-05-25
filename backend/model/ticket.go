@@ -11,10 +11,10 @@ import (
 type Application struct {
 	ID             uuid.UUID  `gorm:"type:varchar(36);primaryKey"      json:"id"`
 	UserID         uuid.UUID  `gorm:"type:varchar(36);not null;index"  json:"user_id"`
-	EventID        uuid.UUID  `gorm:"type:varchar(36);not null;index"  json:"event_id"`
+	EventID        uuid.UUID  `gorm:"type:varchar(36);not null;index:idx_app_event_status"  json:"event_id"`
 	TicketTypeID   uuid.UUID  `gorm:"type:varchar(36);not null"        json:"ticket_type_id"`
 	Quantity       int        `gorm:"not null;default:1"               json:"quantity"`
-	Status         string     `gorm:"not null;default:'pending'"       json:"status"`
+	Status         string     `gorm:"not null;default:'pending';index:idx_app_event_status"       json:"status"`
 	IdempotencyKey string     `gorm:"uniqueIndex;not null"             json:"idempotency_key"`
 	Reason         *string    `                                        json:"reason"`
 	ReviewedBy     *uuid.UUID `gorm:"type:varchar(36)"                 json:"reviewed_by"`
@@ -38,8 +38,8 @@ type Ticket struct {
 	ID            uuid.UUID   `gorm:"type:varchar(36);primaryKey"     json:"id"`
 	ApplicationID uuid.UUID   `gorm:"type:varchar(36);not null;index" json:"application_id"`
 	UserID        uuid.UUID   `gorm:"type:varchar(36);not null;index" json:"user_id"`
-	EventID       uuid.UUID   `gorm:"type:varchar(36);not null"       json:"event_id"`
-	TicketTypeID  uuid.UUID   `gorm:"type:varchar(36);not null"       json:"ticket_type_id"`
+	EventID       uuid.UUID   `gorm:"type:varchar(36);not null;index" json:"event_id"`
+	TicketTypeID  uuid.UUID   `gorm:"type:varchar(36);not null;index" json:"ticket_type_id"`
 	QRToken       string      `gorm:"uniqueIndex;not null"            json:"qr_token"`
 	IsUsed        bool        `gorm:"default:false"                   json:"is_used"`
 	IssuedAt      time.Time   `gorm:"not null;autoCreateTime"         json:"issued_at"`

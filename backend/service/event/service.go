@@ -65,6 +65,9 @@ func (s *Service) List(status string, role string, ticketType string, startFrom 
 		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
 			var cached []model.Event
 			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				for i := range cached {
+					applyTimeBasedStatus(&cached[i])
+				}
 				return cached, nil
 			}
 		}
@@ -73,6 +76,10 @@ func (s *Service) List(status string, role string, ticketType string, startFrom 
 	events, err := s.events.List(status, role, ticketType, startFrom, startTo)
 	if err != nil {
 		return nil, apperror.Internal("Failed to list events")
+	}
+
+	for i := range events {
+		applyTimeBasedStatus(&events[i])
 	}
 
 	if s.redis != nil && cacheTTL > 0 {
@@ -84,11 +91,45 @@ func (s *Service) List(status string, role string, ticketType string, startFrom 
 }
 
 func (s *Service) Get(id string) (model.Event, error) {
+	ctx := context.Background()
+	cacheKey := "event:detail:" + id
+	cacheTTL := eventListCacheTTL()
+
+	// 1. 查 Redis
+	if s.redis != nil && cacheTTL > 0 {
+		if raw, err := s.redis.Get(ctx, cacheKey).Result(); err == nil && raw != "" {
+			var cached model.Event
+			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+				applyTimeBasedStatus(&cached)
+				return cached, nil
+			}
+		}
+	}
+
+	// 2. 查 DB
 	event, err := s.events.FindByID(id)
 	if err != nil {
 		return model.Event{}, apperror.NotFound("Event not found")
 	}
+
+	// 3. 寫回 Redis
+	if s.redis != nil && cacheTTL > 0 {
+		if payload, err := json.Marshal(event); err == nil {
+			_ = s.redis.Set(ctx, cacheKey, payload, cacheTTL).Err()
+		}
+	}
+
 	return event, nil
+}
+
+// applyTimeBasedStatus 補償 GORM AfterFind hook 對 Redis 反序列化的 Event 不會觸發的問題
+func applyTimeBasedStatus(e *model.Event) {
+	now := time.Now()
+	if (e.Status == "published" || e.Status == "closed") && !e.EndTime.IsZero() && now.After(e.EndTime) {
+		e.Status = "ended"
+	} else if e.Status == "published" && !e.ApplyDeadline.IsZero() && now.After(e.ApplyDeadline) {
+		e.Status = "closed"
+	}
 }
 
 func (s *Service) Create(req CreateRequest, creatorID uuid.UUID) (model.Event, error) {
@@ -209,6 +250,7 @@ func (s *Service) UpdateDraft(id string, req CreateRequest) (model.Event, error)
 	}
 	s.invalidateInventoryCache(context.Background(), event.ID)
 	s.invalidateEventListCache(context.Background())
+	s.invalidateEventDetailCache(context.Background(), event.ID.String())
 	return event, nil
 }
 
@@ -235,6 +277,7 @@ func (s *Service) DeleteDraft(id string) error {
 		return apperror.Internal("Failed to delete event")
 	}
 	s.invalidateEventListCache(context.Background())
+	s.invalidateEventDetailCache(context.Background(), id)
 	return nil
 }
 
@@ -251,6 +294,7 @@ func (s *Service) Publish(id string) (model.Event, error) {
 	}
 	event.Status = "published"
 	s.invalidateEventListCache(context.Background())
+	s.invalidateEventDetailCache(context.Background(), id)
 	return event, nil
 }
 
@@ -264,11 +308,13 @@ func (s *Service) Close(id string) (model.Event, error) {
 	}
 	event.Status = "closed"
 	s.invalidateEventListCache(context.Background())
+	s.invalidateEventDetailCache(context.Background(), id)
 	return event, nil
 }
 
 func (s *Service) CheckEligibility(eventID string, userID uuid.UUID) (Eligibility, error) {
-	event, err := s.events.FindByID(eventID)
+	// 改用 s.Get() 以命中 Redis cache，減少 DB 查詢
+	event, err := s.Get(eventID)
 	if err != nil {
 		return Eligibility{}, apperror.NotFound("Event not found")
 	}
@@ -351,4 +397,11 @@ func (s *Service) invalidateEventListCache(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (s *Service) invalidateEventDetailCache(ctx context.Context, eventID string) {
+	if s.redis == nil {
+		return
+	}
+	_ = s.redis.Del(ctx, "event:detail:"+eventID).Err()
 }

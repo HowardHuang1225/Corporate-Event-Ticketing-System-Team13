@@ -33,6 +33,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("employee_id", claims.EmployeeID)
 		c.Set("role", claims.Role)
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.Next()
 	}
 }

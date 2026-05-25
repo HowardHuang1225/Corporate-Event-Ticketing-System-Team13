@@ -214,6 +214,26 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 }
 
 func (s *Service) QueueStatus(userID uuid.UUID, idempotencyKey string) (QueueStatus, error) {
+	// 1. 先查 Redis（熱路徑：queued/processing 狀態都在 Redis，polling 頻率最高）
+	if s.redis != nil {
+		fields, err := s.redis.HGetAll(context.Background(), queueStatusKey(userID.String(), idempotencyKey)).Result()
+		if err == nil && len(fields) > 0 {
+			return QueueStatus{
+				Status:         fields["status"],
+				QueueID:        fields["queue_id"],
+				ApplicationID:  fields["application_id"],
+				EventID:        fields["event_id"],
+				TicketTypeID:   fields["ticket_type_id"],
+				Quantity:       fields["quantity"],
+				Reason:         fields["reason"],
+				QueuedAt:       fields["queued_at"],
+				UpdatedAt:      fields["updated_at"],
+				IdempotencyKey: idempotencyKey,
+			}, nil
+		}
+	}
+
+	// 2. Redis 沒有再查 DB（冷資料：已完成/TTL 過期的 application）
 	var existing model.Application
 	if err := s.db.Where("idempotency_key = ? AND user_id = ?", idempotencyKey, userID.String()).First(&existing).Error; err == nil {
 		return QueueStatus{
@@ -225,25 +245,8 @@ func (s *Service) QueueStatus(userID uuid.UUID, idempotencyKey string) (QueueSta
 			IdempotencyKey: existing.IdempotencyKey,
 		}, nil
 	}
-	if s.redis == nil {
-		return QueueStatus{}, apperror.NotFound("Queue status not found")
-	}
-	fields, err := s.redis.HGetAll(context.Background(), queueStatusKey(userID.String(), idempotencyKey)).Result()
-	if err != nil || len(fields) == 0 {
-		return QueueStatus{}, apperror.NotFound("Queue status not found")
-	}
-	return QueueStatus{
-		Status:         fields["status"],
-		QueueID:        fields["queue_id"],
-		ApplicationID:  fields["application_id"],
-		EventID:        fields["event_id"],
-		TicketTypeID:   fields["ticket_type_id"],
-		Quantity:       fields["quantity"],
-		Reason:         fields["reason"],
-		QueuedAt:       fields["queued_at"],
-		UpdatedAt:      fields["updated_at"],
-		IdempotencyKey: idempotencyKey,
-	}, nil
+
+	return QueueStatus{}, apperror.NotFound("Queue status not found")
 }
 
 func (s *Service) StartQueueWorkers(ctx context.Context) {
@@ -347,6 +350,8 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 	}).Err()
 	_ = s.redis.Expire(ctx, statusKey, s.queue.StatusTTL).Err()
 	_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, msg.ID).Err()
+	s.invalidateMyApplicationsCache(ctx, job.UserID.String())
+	s.invalidateMyTicketsCache(ctx, job.UserID.String())
 	if created {
 		log.Printf("ticket queue job approved app=%s stream_id=%s", app.ID.String(), msg.ID)
 	}
