@@ -111,15 +111,15 @@ When `TICKET_QUEUE_ENABLED=true`, `POST /v1/applications` may return `202 Accept
 Recommended queue-mode run:
 
 ```bash
-RUN_LABEL=2000v2000q-queue \
-TOTAL_USERS=2000 \
-TOTAL_QUOTA=2000 \
-VUS=2000 \
+RUN_LABEL=10000v10000q-queue \
+TOTAL_USERS=10000 \
+TOTAL_QUOTA=10000 \
+VUS=10000 \
 ITERATIONS=1 \
 MAX_DURATION=3m \
 HTTP_TIMEOUT=60s \
 SETTLE_SECONDS=120 \
-KEEP_DATA=0 \
+KEEP_DATA=1 \
 STRICT_THRESHOLDS=0 \
 ./load-test/run_load_test.sh
 ```

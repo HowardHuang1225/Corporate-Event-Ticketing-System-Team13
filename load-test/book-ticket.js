@@ -117,6 +117,14 @@ function parseErrorCode(body) {
   }
 }
 
+function getErrorCodeIfSampled(res) {
+  if (res.status < 400) return '';
+  if (Math.random() > ERROR_SAMPLE_RATE) return '';
+  const body = (res.body || '').slice(0, MAX_ERROR_BODY_LENGTH).replace(/\s+/g, ' ');
+  console.log(`[ERROR_SAMPLE] status=${res.status} vu=${vu.idInTest} body=${body}`);
+  return parseErrorCode(body);
+}
+
 function maybeLogErrorSample(res, code) {
   if (res.status < 400) return;
   if (Math.random() > ERROR_SAMPLE_RATE) return;
@@ -146,7 +154,15 @@ export default function () {
   };
 
   const res = http.post(`${BASE_URL}/applications`, payload, params);
-  const code = parseErrorCode(res.body);
+  let code = '';
+  if (res.status >= 400) {
+    if (DISCARD_RESPONSE_BODIES) {
+      code = getErrorCodeIfSampled(res);
+    } else {
+      code = parseErrorCode(res.body);
+      maybeLogErrorSample(res, code);
+    }
+  }
 
   if (res.status === 201) {
     bookingCreated201.add(1);
