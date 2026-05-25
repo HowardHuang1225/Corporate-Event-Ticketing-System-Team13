@@ -6,7 +6,7 @@ This directory contains the comprehensive microservices Kubernetes manifests for
 
 | Component | K8s Resource Type | Replicas | Service Type | Core Technical Highlights |
 | :--- | :--- | :--- | :--- | :--- |
-| **frontend** | Deployment & Service | 1 | NodePort (`30080`) | Production Nginx server reverse-proxying `/api` traffic to backend. Pre-configured for CORS whitelist synchronization. |
+| **frontend** | Deployment & Service | 2 | NodePort (`30080`) | Production Nginx server reverse-proxying `/api` traffic to backend. Pre-configured for CORS whitelist synchronization. |
 | **backend** | Deployment & Service | 2 | ClusterIP | Go ticket-booking core engine running a **dual-replica load-balanced array**. Utilizes `$(VAR)` dynamic substitution for zero-code database string assembly. |
 | **postgres** | Deployment & Service | 1 | ClusterIP (Isolated) | PostgreSQL 15 database tuned with `max_connections=250`. Implements `fsGroup: 999` to overcome cross-platform storage mounting permission constraints. |
 | **redis** | Deployment & Service | 1 | ClusterIP (Isolated) | Redis 7 queue manager powered by Redis Streams with Append-Only File (AOF) storage engine persistence enabled. |
