@@ -14,18 +14,18 @@ func TestEmployeeApplyTicket(t *testing.T) {
 	tasks := []utils.Task{
 		{
 			Description: "測試員工可以申請活動票券",
-			Target:      ApplyTicketCreatesPendingApplication,
+			Target:      ApplyTicketCreatesApprovedApplication,
 		},
 	}
 
 	utils.RunTestTasks(t, tasks)
 }
 
-func ApplyTicketCreatesPendingApplication(t *testing.T, errs *utils.Errors) {
+func ApplyTicketCreatesApprovedApplication(t *testing.T, errs *utils.Errors) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	utils.PrintTestProgress("申請票券：確認員工送出活動與票種後，系統會建立 pending 申請。\n")
+	utils.PrintTestProgress("申請票券：確認員工送出活動與票種後，系統會建立申請並自動 approve。\n")
 	utils.PrintTestProgress("==================================================\n")
 
 	tx, users, cleanup, err := setupEmployeeEventTest(t)

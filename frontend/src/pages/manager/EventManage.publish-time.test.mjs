@@ -1,38 +1,30 @@
-import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
 
 const sourcePath = join(dirname(fileURLToPath(import.meta.url)), 'EventManage.tsx')
 const source = readFileSync(sourcePath, 'utf8')
 
-test('EventManage create form publish_time contract', async (t) => {
-  await t.test('form state stores publish_time', () => {
-    console.info('checking EventManage EMPTY_FORM includes publish_time')
-    assert.ok(
-      /const EMPTY_FORM\s*=\s*\{[\s\S]*publish_time\s*:/.test(source),
-      'EMPTY_FORM should initialize publish_time for the scheduled publish field',
-    )
+describe('EventManage 建立表單的 publish_time 契約', () => {
+  it('EMPTY_FORM 會初始化 publish_time 欄位', () => {
+    console.info('確認 EventManage EMPTY_FORM 包含 publish_time')
+
+    expect(/const EMPTY_FORM\s*=\s*\{[\s\S]*publish_time\s*:/.test(source)).toBe(true)
   })
 
-  await t.test('modal renders a publish_time datetime input', () => {
-    console.info('checking EventManage modal renders a publish_time datetime-local input')
-    assert.ok(
-      /<input[^>]*type="datetime-local"[^>]*value=\{form\.publish_time\}/.test(source),
-      'the create modal should bind a datetime-local input to form.publish_time',
-    )
-    assert.ok(
-      source.includes('publish_time: e.target.value'),
-      'the publish_time input should update form.publish_time',
-    )
+  it('建立/編輯 modal 會渲染綁定 publish_time 的 datetime-local input', () => {
+    console.info('確認 EventManage modal 渲染 publish_time datetime-local input')
+
+    expect(/<input[^>]*type="datetime-local"[^>]*value=\{form\.publish_time\}/.test(source)).toBe(true)
+    expect(source.includes('publish_time: e.target.value')).toBe(true)
   })
 
-  await t.test('create payload serializes publish_time', () => {
-    console.info('checking EventManage create payload sends publish_time')
-    assert.ok(
+  it('送出 payload 時會把 publish_time 序列化成 ISO 字串', () => {
+    console.info('確認 EventManage payload 會送出 ISO 格式 publish_time')
+
+    expect(
       /publish_time\s*:\s*form\.publish_time\s*\?\s*new Date\(form\.publish_time\)\.toISOString\(\)\s*:\s*''/.test(source),
-      'handleCreate should send publish_time as an ISO timestamp',
-    )
+    ).toBe(true)
   })
 })
