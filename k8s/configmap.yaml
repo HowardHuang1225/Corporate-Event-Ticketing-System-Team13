@@ -6,20 +6,20 @@ metadata:
 data:
   DB_HOST: "postgres-service"
   DB_PORT: "5432"
-  DB_USER: "postgres"
-  DB_NAME: "ticket_db"
+  DB_USER: "ts_user"
+  DB_NAME: "ticketing_system"
   DB_MAX_OPEN_CONNS: "250"
-  DB_MAX_IDLE_CONNS: "25"
-  DB_CONN_MAX_LIFETIME_MINUTES: "5"
+  DB_MAX_IDLE_CONNS: "50"
+  DB_CONN_MAX_LIFETIME_MINUTES: "30"
   
   REDIS_URL: "redis://redis-service:6379/0"
 
   TICKET_QUEUE_ENABLED: "true"
   TICKET_QUEUE_STREAM: "ticket:applications"
   TICKET_QUEUE_GROUP: "ticket-workers"
-  TICKET_QUEUE_WORKERS: "15"
+  TICKET_QUEUE_WORKERS: "8"
   TICKET_QUEUE_MAX_WAITING: "10000"
-  TICKET_QUEUE_RESERVATION_TTL_SECONDS: "600"
+  TICKET_QUEUE_RESERVATION_TTL_SECONDS: "900"
   TICKET_QUEUE_STATUS_TTL_SECONDS: "3600"
   
   GIN_MODE: "release"
