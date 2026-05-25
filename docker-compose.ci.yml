@@ -54,4 +54,4 @@ services:
       - backend
 
     expose:
-      - "80"
+      - "8080"
