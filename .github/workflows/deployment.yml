@@ -3,7 +3,7 @@ name: "CD to AKS"
 on:
   push:
     branches:
-      - main
+      - main  
       - feat/*
     paths:
       - 'k8s/**'
@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   packages: write
+
 concurrency:
   group: cd-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true  
@@ -50,14 +51,14 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    # Convert repository owner and name to strict lowercase to satisfy GHCR requirements
-    - name: Set lower-case environment variables
+    - name: Set lower-case image path
       id: vars
       run: |
-        OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-        REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-        echo "owner=$OWNER" >> $GITHUB_OUTPUT
-        echo "repo=$REPO" >> $GITHUB_OUTPUT
+        IMAGE_PATH=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        echo "image_path=$IMAGE_PATH" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3 
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -66,7 +67,6 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # Build Frontend (Triggered when frontend or api changes)
     - name: Build and Push Frontend Image
       if: needs.check-changes.outputs.frontend == 'true'
       uses: docker/build-push-action@v5
@@ -74,9 +74,11 @@ jobs:
         context: ./frontend
         file: ./frontend/Dockerfile
         push: true
-        tags: ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}/frontend:latest
+        tags: ${{ steps.vars.outputs.image_path }}/frontend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
-    # Build Backend (Triggered when backend or api changes)
+    # Build Backend (加入快取機制)
     - name: Build and Push Backend Image
       if: needs.check-changes.outputs.backend == 'true'
       uses: docker/build-push-action@v5
@@ -84,20 +86,18 @@ jobs:
         context: ./backend
         file: ./backend/Dockerfile
         push: true
-        tags: ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}/backend:latest
+        tags: ${{ steps.vars.outputs.image_path }}/backend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
-    # Connect to Azure AKS Cluster
     - name: Set Kubernetes Context
       uses: azure/k8s-set-context@v3
       with:
         method: kubeconfig
         kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
 
-    # Apply configuration manifests and dynamically patch image paths
     - name: Deploy and Inject Images to AKS
       run: |
-        # 1. Create a temporary K8s credential registry key using the Action's built-in token
-        # This acts as a pass-card so AKS can pull from your private GHCR repository
         kubectl create secret docker-registry ghcr-auth \
           --docker-server=ghcr.io \
           --docker-username=${{ github.actor }} \
@@ -105,25 +105,19 @@ jobs:
           --docker-email=team13@nthu.edu.tw \
           --dry-run=client -o yaml | kubectl apply -f -
 
-        # 2. Apply your clean K8s YAML manifests
         kubectl apply -f k8s/ -R
         
-        # 3. Inject the perfected lowercase registry paths
-        OWNER="${{ steps.vars.outputs.owner }}"
-        REPO="${{ steps.vars.outputs.repo }}"
+        BASE_IMAGE="${{ steps.vars.outputs.image_path }}"
+        echo "[DEBUG] Base GHCR Path -> $BASE_IMAGE"
+        
+        if [ "${{ needs.check-changes.outputs.frontend }}" == "true" ]; then
+          echo "Updating Frontend Deployment..."
+          kubectl set image deployment/frontend-deployment frontend=$BASE_IMAGE/frontend:${{ github.sha }}
+          kubectl rollout status deployment/frontend-deployment --timeout=120s
+        fi
 
-        echo "[DEBUG] Real GHCR Path -> ghcr.io/$OWNER/$REPO"
-        
-        kubectl set image deployment/frontend-deployment frontend=ghcr.io/$OWNER/$REPO/frontend:latest
-        kubectl set image deployment/backend-deployment backend=ghcr.io/$OWNER/$REPO/backend:latest
-        
-        # 4. CRITICAL: Force both deployments to carry the 'ghcr-auth' key to bypass the Private lock
-        kubectl patch deployment frontend-deployment -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-auth\"}]}}}}"
-        kubectl patch deployment backend-deployment -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-auth\"}]}}}}"
-        
-        # 5. Trigger rolling restart to consume the newly authorized private images
-        kubectl rollout restart deployment/frontend-deployment || echo "ok"
-        kubectl rollout restart deployment/backend-deployment || echo "ok"
-
-        kubectl rollout restart deployment/prometheus-core -n monitoring || echo "ok"
-        kubectl rollout restart deployment/grafana -n monitoring || echo "ok"
+        if [ "${{ needs.check-changes.outputs.backend }}" == "true" ]; then
+          echo "Updating Backend Deployment..."
+          kubectl set image deployment/backend-deployment backend=$BASE_IMAGE/backend:${{ github.sha }}
+          kubectl rollout status deployment/backend-deployment --timeout=120s
+        fi

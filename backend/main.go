@@ -155,7 +155,7 @@ func main() {
 
 	router.Use(otelgin.Middleware("ticket-service"))
 
-	// 👉 metrics middleware
+	// metrics middleware
 	router.Use(metricsMiddleware())
 
 	// routes

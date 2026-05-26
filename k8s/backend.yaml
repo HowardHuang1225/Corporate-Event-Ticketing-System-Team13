@@ -14,12 +14,14 @@ spec:
       labels:
         app: backend
     spec:
+      imagePullSecrets:
+        - name: ghcr-auth
       containers:
       - name: backend
         # In a real production environment, you would push your image to a registry and pull it here.
         # In local development, you can build the image with the same tag and use 'imagePullPolicy: IfNotPresent' to avoid pulling from a registry.
         image: corporate-event-ticketing-system-team13-backend:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 8001
         env:
