@@ -86,6 +86,37 @@ spec:
         - name: DATABASE_URL
           value: "host=$(DB_HOST) user=$(DB_USER) password=$(DB_PASSWORD) dbname=$(DB_NAME) port=$(DB_PORT) sslmode=disable"
 
+        # MinIO related environment variables
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_USER
+
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_PASSWORD
+
+        # ConfigMap（非敏感）
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: minio-config
+              key: MINIO_ENDPOINT
+
+        - name: MINIO_BUCKET_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: minio-config
+              key: MINIO_BUCKET_NAME
+
+        - name: MINIO_PUBLIC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: minio-config
+              key: MINIO_PUBLIC_ENDPOINT
         resources:
           limits:
             cpu: "1"
@@ -105,4 +136,4 @@ spec:
   - protocol: TCP
     port: 8001
     targetPort: 8001
-  type: ClusterIP 
+  type: ClusterIP
