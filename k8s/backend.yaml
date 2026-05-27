@@ -137,9 +137,6 @@ spec:
                   name: app-secret
                   key: JWT_SECRET
 
-            # =========================
-            # MinIO (S3 Storage)
-            # =========================
             - name: MINIO_ENDPOINT
               valueFrom:
                 configMapKeyRef:
@@ -148,14 +145,14 @@ spec:
 
             - name: MINIO_ACCESS_KEY
               valueFrom:
-                secretKeyRef:
-                  name: app-secret
+                configMapKeyRef:
+                  name: app-config
                   key: MINIO_ACCESS_KEY
 
             - name: MINIO_SECRET_KEY
               valueFrom:
-                secretKeyRef:
-                  name: app-secret
+                configMapKeyRef:
+                  name: app-config
                   key: MINIO_SECRET_KEY
 
             - name: MINIO_BUCKET_NAME
