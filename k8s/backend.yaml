@@ -90,13 +90,13 @@ spec:
         - name: MINIO_ROOT_USER
           valueFrom:
             secretKeyRef:
-              name: minio-secret
+              name: app-secret
               key: MINIO_ROOT_USER
 
         - name: MINIO_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: minio-secret
+              name: app-secret
               key: MINIO_ROOT_PASSWORD
 
         # ConfigMap（非敏感）
