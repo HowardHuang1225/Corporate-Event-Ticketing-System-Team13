@@ -63,12 +63,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: app-secret
-                  key: minio-root-user
+                  key: MINIO_ROOT_USER
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: app-secret
-                  key: minio-root-password
+                  key: MINIO_ROOT_PASSWORD
           ports:
             - containerPort: 9000
             - containerPort: 9001

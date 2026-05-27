@@ -26,6 +26,6 @@ data:
   PORT: "8001"
   ALLOWED_ORIGINS: "http://localhost:30080"
 
-  MINIO_ENDPOINT: "minio-service:9000"
+  MINIO_ENDPOINT: "http://minio-service:9000"
   MINIO_BUCKET_NAME: "ticketing-attachments"
   MINIO_PUBLIC_ENDPOINT: "http://minio-service:9000"
