@@ -11,6 +11,7 @@ spec:
   - hosts:
     - nthu-team13.duckdns.org
     secretName: team13-tls-cert
+
   rules:
   - host: nthu-team13.duckdns.org 
     http:
@@ -22,3 +23,10 @@ spec:
             name: frontend-service
             port:
               number: 8080
+      - backend:
+          service:
+            name: minio-service   
+            port:
+              number: 9000        
+        path: /minio-api          
+        pathType: Prefix
