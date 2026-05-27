@@ -148,13 +148,13 @@ spec:
 
             - name: MINIO_ACCESS_KEY
               valueFrom:
-                configMapKeyRef:
+                secretKeyRef:
                   name: app-secret
                   key: MINIO_ACCESS_KEY
 
             - name: MINIO_SECRET_KEY
               valueFrom:
-                configMapKeyRef:
+                secretKeyRef:
                   name: app-secret
                   key: MINIO_SECRET_KEY
 
