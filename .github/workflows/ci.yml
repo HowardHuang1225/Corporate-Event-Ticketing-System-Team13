@@ -37,7 +37,9 @@ jobs:
       postgres:
         image: postgres:13
         env:
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ticketing_system 
         ports:
           - 5432:5432
         options: >-
@@ -58,7 +60,7 @@ jobs:
       DB_HOST: localhost
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: ticketing
+      DB_NAME: ticketing_system
       DB_PORT: 5432
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret
@@ -76,12 +78,8 @@ jobs:
 
       - name: Run tests with coverage
         env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 5432
-          DB_USER: postgres      
-          DB_PASSWORD: postgres   
-          DB_NAME: postgres     
-          REDIS_URL: redis://127.0.0.1:6379  
+          DATABASE_URL: host=127.0.0.1 user=postgres password=postgres dbname=ticketing_system port=5432 sslmode=disable
+          REDIS_URL: redis://127.0.0.1:6379
         run: |
           cd backend
           go test -race -coverprofile=coverage.txt -covermode=atomic ./...
@@ -93,6 +91,11 @@ jobs:
         with:
           name: backend-coverage-report
           path: backend/coverage.txt
+
+      - name: Coverage Summary
+        run: |
+          cd backend
+          go tool cover -func=coverage.txt
 
   golangci:
     name: Go Lint
@@ -137,12 +140,16 @@ jobs:
     env:
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: postgres
+      DB_NAME: ticketing_system
       DB_PORT: 5432
       REDIS_PORT: 6379
       JWT_SECRET: test-secret
       PORT: 8080
       ALLOWED_ORIGINS: "*"
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: ticketing-attachments
     steps:
       - uses: actions/checkout@v4
 

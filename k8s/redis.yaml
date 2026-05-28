@@ -46,7 +46,7 @@ spec:
       volumes:
       - name: redis-storage
         persistentVolumeClaim:
-          claimName: redis-pvc # Use the PVC we defined for Redis data persistence
+          claimName: redis-pvc 
 ---
 apiVersion: v1
 kind: Service

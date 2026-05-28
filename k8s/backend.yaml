@@ -5,7 +5,7 @@ metadata:
   labels:
     app: backend
 spec:
-  replicas: 2 # Open up to 2 replicas for better availability and load distribution
+  replicas: 2
   selector:
     matchLabels:
       app: backend
@@ -13,84 +13,178 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8001"
     spec:
+      imagePullSecrets:
+        - name: ghcr-auth
+
       containers:
-      - name: backend
-        # In a real production environment, you would push your image to a registry and pull it here.
-        # In local development, you can build the image with the same tag and use 'imagePullPolicy: IfNotPresent' to avoid pulling from a registry.
-        image: corporate-event-ticketing-system-team13-backend:latest
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8001
-        env:
-        # Get all config values from ConfigMap and Secret for maximum flexibility and security
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: DB_HOST }
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: DB_PORT }
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: DB_USER }
-        - name: DB_NAME
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: DB_NAME }
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: REDIS_URL }
-        - name: PORT
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: PORT }
-        - name: GIN_MODE
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: GIN_MODE }
-        - name: ALLOWED_ORIGINS
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: ALLOWED_ORIGINS }
-            
-        # Include all the ticket queue related config values 
-        - name: TICKET_QUEUE_ENABLED
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_ENABLED }
-        - name: TICKET_QUEUE_STREAM
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_STREAM }
-        - name: TICKET_QUEUE_GROUP
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_GROUP }
-        - name: TICKET_QUEUE_WORKERS
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_WORKERS }
-        - name: TICKET_QUEUE_MAX_WAITING
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_MAX_WAITING }
-        - name: TICKET_QUEUE_RESERVATION_TTL_SECONDS
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_RESERVATION_TTL_SECONDS }
-        - name: TICKET_QUEUE_STATUS_TTL_SECONDS
-          valueFrom:
-            configMapKeyRef: { name: app-config, key: TICKET_QUEUE_STATUS_TTL_SECONDS }
+        - name: backend
+          image: corporate-event-ticketing-system-team13-backend:latest
+          imagePullPolicy: Always
 
-        # Get sensitive values from Secret to avoid hardcoding them in ConfigMap
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef: { name: app-secret, key: DB_PASSWORD }
-        - name: JWT_SECRET
-          valueFrom:
-            secretKeyRef: { name: app-secret, key: JWT_SECRET }
+          ports:
+            - containerPort: 8001
 
-        # Construct the DATABASE_URL from individual components for better readability and maintainability
-        - name: DATABASE_URL
-          value: "host=$(DB_HOST) user=$(DB_USER) password=$(DB_PASSWORD) dbname=$(DB_NAME) port=$(DB_PORT) sslmode=disable"
+          env:
+            # =========================
+            # Core Config
+            # =========================
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_HOST
 
-        resources:
-          limits:
-            cpu: "1"
-            memory: "1Gi"
-          requests:
-            cpu: "500m"
-            memory: "512Mi"
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_PORT
+
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_USER
+
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_NAME
+
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: REDIS_URL
+
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: PORT
+
+            - name: GIN_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: GIN_MODE
+
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ALLOWED_ORIGINS
+
+            # =========================
+            # Queue Config
+            # =========================
+            - name: TICKET_QUEUE_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_ENABLED
+
+            - name: TICKET_QUEUE_STREAM
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_STREAM
+
+            - name: TICKET_QUEUE_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_GROUP
+
+            - name: TICKET_QUEUE_WORKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_WORKERS
+
+            - name: TICKET_QUEUE_MAX_WAITING
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_MAX_WAITING
+
+            - name: TICKET_QUEUE_RESERVATION_TTL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_RESERVATION_TTL_SECONDS
+
+            - name: TICKET_QUEUE_STATUS_TTL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: TICKET_QUEUE_STATUS_TTL_SECONDS
+
+            # =========================
+            # Secrets
+            # =========================
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: DB_PASSWORD
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: JWT_SECRET
+
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MINIO_ENDPOINT
+
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MINIO_ACCESS_KEY
+
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MINIO_SECRET_KEY
+
+            - name: MINIO_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MINIO_BUCKET_NAME
+
+            - name: MINIO_PUBLIC_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MINIO_PUBLIC_ENDPOINT
+
+            # =========================
+            # Derived
+            # =========================
+            - name: DATABASE_URL
+              value: "host=$(DB_HOST) user=$(DB_USER) password=$(DB_PASSWORD) dbname=$(DB_NAME) port=$(DB_PORT) sslmode=disable"
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
 ---
 apiVersion: v1
 kind: Service
@@ -100,7 +194,7 @@ spec:
   selector:
     app: backend
   ports:
-  - protocol: TCP
-    port: 8001
-    targetPort: 8001
-  type: ClusterIP 
+    - protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP

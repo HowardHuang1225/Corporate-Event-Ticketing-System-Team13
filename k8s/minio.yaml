@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: managed-premium   
+
+---
+# ==========================================
+# Service
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  labels:
+    app: minio
+spec:
+  type: ClusterIP
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+
+---
+# ==========================================
+# Deployment (MinIO single-node)
+# ==========================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+
+          volumeMounts:
+            - name: data
+              mountPath: /data
+
+          # ==========================================
+          # Health Checks 
+          # ==========================================
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-pvc
+
+---
+# ==========================================
+# Bucket Init Job
+# ==========================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init-bucket
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until mc alias set local http://minio-service:9000 minioadmin minioadmin; do
+                echo "waiting for minio..."
+                sleep 3
+              done
+
+              mc mb local/pdfs || true
+              mc policy set public local/pdfs || true

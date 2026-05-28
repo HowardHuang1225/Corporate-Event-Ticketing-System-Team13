@@ -223,3 +223,106 @@ EVENT_LIST_CACHE_TTL_SECONDS=15
 ```
 
 Set it to `0` to disable the cache. The cache is short-lived and is invalidated on common event mutations. The scheduler also clears event-list cache after lifecycle updates.
+
+
+
+# K8s Load Test Guide
+
+Context below contains k6 load tests modified specifically for the Kubernetes (AKS) cluster environment.
+
+## Recommended quick start
+
+Ensure your local terminal is authenticated and connected to an active AKS cluster (`kubectl get nodes`).
+
+```bash
+chmod +x load-test/run_k8s_load_test.sh
+TOTAL_USERS=10 TOTAL_QUOTA=10 VUS=10 ITERATIONS=1 KEEP_DATA=1 BASE_URL=https://nthu-team13.duckdns.org/v1 ./load-test/run_k8s_load_test.sh
+
+```
+
+The script dynamically detects Postgres and Redis pods via labels, provisions sandbox datasets isolated by a transient `RUN_ID`, and outputs results to:
+
+```text
+load-test/results/<RUN_ID>/
+load-test/results/<RUN_ID>.zip
+
+```
+
+---
+
+## Common K8s commands
+
+### 100 users, 100 tickets baseline check
+
+```bash
+RUN_LABEL=100v100q-k8s TOTAL_USERS=100 TOTAL_QUOTA=100 VUS=100 ITERATIONS=1 KEEP_DATA=0 BASE_URL=https://nthu-team13.duckdns.org/v1 ./load-test/run_k8s_load_test.sh
+
+```
+
+### 2000 users competing under queue mode (Sustained Settle)
+
+```bash
+RUN_LABEL=2000v2000q-queue-k8s TOTAL_USERS=2000 TOTAL_QUOTA=2000 VUS=2000 ITERATIONS=1 MAX_DURATION=3m HTTP_TIMEOUT=60s SETTLE_SECONDS=120 KEEP_DATA=0 BASE_URL=https://nthu-team13.duckdns.org/v1 ./load-test/run_k8s_load_test.sh
+
+```
+
+### Mixed user journey test on remote ingress
+
+```bash
+RUN_LABEL=mixed-journey-k8s K6_SCRIPT=mixed-journey.js TOTAL_USERS=5000 TOTAL_QUOTA=5000 RATE=300 DURATION=2m PRE_ALLOCATED_VUS=300 MAX_VUS=1500 MIXED_BOOKING_RATIO=0.1 READ_DETAIL_RATIO=0.2 DISCARD_RESPONSE_BODIES=1 SETTLE_SECONDS=120 KEEP_DATA=1 BASE_URL=https://nthu-team13.duckdns.org/v1 ./load-test/run_k8s_load_test.sh
+
+```
+
+---
+
+## Parameters
+
+All configuration variables can be passed inline before the script execution path:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| **`BASE_URL`** | **Crucial for K8s:** Targeted routing URL pointing to your public ingress gateway | `http://localhost:8001/v1` |
+| `TOTAL_USERS` | Number of fake employees inserted into DB | `2000` |
+| `TOTAL_QUOTA` | Ticket quota for the test ticket type | `50000` |
+| `MAX_TICKETS_PER_PERSON` | Per-user ticket limit | `1` |
+| `VUS` | k6 virtual users | `1000` |
+| `ITERATIONS` | Booking attempts per VU | `1` |
+| `MAX_DURATION` | k6 max duration | `3m` |
+| `KEEP_DATA` | Keep DB rows after test for manual inspection (`0` triggers target deletion) | `1` |
+| `HTTP_TIMEOUT` | Network timeout threshold for remote API evaluation | `30s` |
+| `SETTLE_SECONDS` | Wait buffer to let asynchronous consumers drain Redis streams before metric verification | `0` |
+| `RATE` | Requests per second (RPS) under constant arrival rates | `100` |
+| `TIME_UNIT` | Base duration fraction for the defined arrival pacing | `1s` |
+| `DURATION` | Total execution timespan for scenario runners | `1m` |
+| `PRE_ALLOCATED_VUS` | Initial warm worker state footprint size for arrival modes | `100` |
+| `MAX_VUS` | Allocation limit caps under sudden capacity expansions | `200` |
+| `READ_DETAIL_RATIO` | Percentage weighting configuration for browse activities | `0.3` |
+| `MIXED_BOOKING_RATIO` | Percentage weighting configuration for purchase interactions | `0.1` |
+| `TICKET_QUEUE_STREAM` | Target Redis Stream topic identifier for applications routing | `ticket:applications` |
+| `TICKET_QUEUE_GROUP` | Designated consumer group identity for worker matching | `ticket-workers` |
+
+---
+
+## Output files
+
+Each result folder contains:
+
+```text
+book-summary.json   k6 machine-readable summary
+k6-console.log      full k6 console output, including sampled error bodies
+db-summary.txt      Verification metrics harvested via kubectl exec from Postgres/Redis
+backend-tail.log    Standard output dump from target Go API pod replica
+postgres-tail.log   Database infrastructure diagnostic logs from K8s cluster
+redis-tail.log      In-memory store queue buffer runtime logs from K8s cluster
+stress_env.json     IDs used by this run
+parameters.env      run parameters
+
+```
+
+---
+
+## Important K8s interpretation & safety
+
+* **No Overwriting / No Corruptions**: This script entirely discards the destructive `TRUNCATE TABLE ... CASCADE;` statement. Data cleanup now switches to precision scopes via `DELETE WHERE event_id = '${EVENT_ID}'`. Concurrent manual testing from frontend remains unaffected.
+* **Dynamic Identification**: If the shell reports target errors, check `kubectl get pods` to ensure labels (`app=postgres` and `app=redis`) are matched appropriately.
+* **Budget Preservation**: To prevent accidental consumption of Azure for Students credits, always shut down your underlying node pools via `az aks stop` immediately after harvesting the results zip file.

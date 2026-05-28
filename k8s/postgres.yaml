@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce 
   resources:
     requests:
-      storage: 10Gi # 申請 10GB 的空間
+      storage: 10Gi 
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -51,25 +51,25 @@ spec:
         ports:
         - containerPort: 5432
         resources:
-          limits:
-            cpu: "1"
-            memory: "1Gi"
           requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
             cpu: "500m"
             memory: "512Mi"
         volumeMounts:
         - name: postgres-storage
-          mountPath: /var/lib/postgresql/data # 精確對齊 Compose 的資料路徑
+          mountPath: /var/lib/postgresql/data 
           subPath: pgdata
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
-          claimName: postgres-pvc # 綁定上方申請的 PVC 硬碟
+          claimName: postgres-pvc 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres-service # 這個名字必須和 ConfigMap 裡面的 DB_HOST 一模一樣！
+  name: postgres-service 
 spec:
   selector:
     app: postgres
