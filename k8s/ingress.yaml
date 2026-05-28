@@ -5,8 +5,6 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true" 
-    nginx.ingress.kubernetes.io/upstream-vhost: "minio-service:9000"
-    nginx.ingress.kubernetes.io/proxy-set-headers: "Host: minio-service:9000"
 spec:
   ingressClassName: nginx
   tls:
