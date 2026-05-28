@@ -27,7 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"gorm.io/plugin/opentelemetry/tracing"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 )
 
@@ -57,9 +56,8 @@ func init() {
 	metrics.Register()
 }
 
-func initTracer() *sdktrace.TracerProvider {
-    log.Println("Tracing disabled (no backend configured)")
-    return nil
+func initTracer() {
+	log.Println("Tracing disabled (metrics only mode)")
 }
 
 func metricsMiddleware() gin.HandlerFunc {
@@ -99,10 +97,7 @@ func main() {
 	cfg := config.Load()
 
 	// tracer
-	tp := initTracer()
-	if tp != nil {
-		defer tp.Shutdown(context.Background())
-	}
+	initTracer()
 	db := database.Connect(cfg)
 	// _ = db.Use(tracing.NewPlugin())
 
