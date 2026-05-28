@@ -11,8 +11,8 @@ data:
     pid /var/run/nginx.pid;
 
     events {
-        worker_connections 10240; # 關鍵：從 1024 放大到 10240，徹底解放單個 Nginx 房間的接入極限！
-        multi_accept on;          # 讓 Nginx 收到新連線通知時，一次性接受所有連線，避免排隊
+        worker_connections 10240; 
+        multi_accept on;          
     }
 
     http {
@@ -31,7 +31,6 @@ data:
         keepalive_timeout 65;
         keepalive_requests 10000; # 保持長連線，避免極限湧入時頻繁建立 TCP 導致 EOF
 
-        # 完美對齊你們前端轉發至後端 Go 服務的 Upstream 路由
         upstream backend_servers {
             server backend:8001;
         }

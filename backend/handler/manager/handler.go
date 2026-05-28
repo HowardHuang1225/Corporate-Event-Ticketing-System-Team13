@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"ticketing-system/backend/handler/shared"
+	"ticketing-system/backend/metrics"
 	"ticketing-system/backend/pkg/storage"
 	eventsvc "ticketing-system/backend/service/event"
 	reportsvc "ticketing-system/backend/service/report"
@@ -271,6 +272,7 @@ func (h *Handler) ApproveApplication(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	h.syncEventTicketRemaining(app.EventID.String())
 	c.JSON(http.StatusOK, shared.OK(app))
 }
 
@@ -287,6 +289,7 @@ func (h *Handler) RejectApplication(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	h.syncEventTicketRemaining(app.EventID.String())
 	c.JSON(http.StatusOK, shared.OK(app))
 }
 
@@ -306,6 +309,7 @@ func (h *Handler) Checkin(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	metrics.IncTicketRedeem(result.Ticket.EventID.String())
 	c.JSON(http.StatusOK, shared.OK(result))
 }
 
@@ -419,4 +423,16 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, shared.OK(gin.H{"url": url}))
+}
+
+func (h *Handler) syncEventTicketRemaining(eventID string) {
+	event, err := h.events.Get(eventID)
+	if err != nil {
+		return
+	}
+	remaining := 0
+	for _, ticketType := range event.TicketTypes {
+		remaining += ticketType.Remaining
+	}
+	metrics.SetTicketRemaining(eventID, remaining)
 }

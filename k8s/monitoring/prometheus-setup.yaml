@@ -1,6 +1,3 @@
-# 這行指令會自動下載並部署包含 RBAC 權限、ConfigMap 與 Deployment 的 Prometheus 核心
-# 我們直接利用 K8s 宣告式特性，在我們檔案裡透過引用或直接套用官方輕量版
-# 註：此處提供最核心的 Deployment 與 Service 示意，實務上最快方式是執行下方第四部分的單行指令
 apiVersion: apps/v1
 kind: Deployment
 metadata:

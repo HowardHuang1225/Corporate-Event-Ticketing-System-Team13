@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"ticketing-system/backend/handler/shared"
+	"ticketing-system/backend/metrics"
 	eventsvc "ticketing-system/backend/service/event"
 	ticketsvc "ticketing-system/backend/service/ticket"
 
@@ -78,11 +79,13 @@ func (h *Handler) Apply(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	metrics.IncTicketApply(req.EventID)
 	result, err := h.tickets.Apply(userID, req)
 	if err != nil {
 		shared.WriteError(c, err)
 		return
 	}
+	h.syncEventTicketRemaining(req.EventID)
 	status := http.StatusCreated
 	if result.Queued {
 		status = http.StatusAccepted
@@ -125,6 +128,9 @@ func (h *Handler) CancelApplication(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	if eventID := c.Query("event_id"); eventID != "" {
+		h.syncEventTicketRemaining(eventID)
+	}
 	c.JSON(http.StatusOK, shared.OK(gin.H{"message": "Application cancelled and tickets returned to pool"}))
 }
 
@@ -147,5 +153,20 @@ func (h *Handler) CancelTicket(c *gin.Context) {
 		shared.WriteError(c, err)
 		return
 	}
+	if eventID := c.Query("event_id"); eventID != "" {
+		h.syncEventTicketRemaining(eventID)
+	}
 	c.JSON(http.StatusOK, shared.OK(gin.H{"message": "Ticket returned successfully"}))
+}
+
+func (h *Handler) syncEventTicketRemaining(eventID string) {
+	event, err := h.events.Get(eventID)
+	if err != nil {
+		return
+	}
+	remaining := 0
+	for _, ticketType := range event.TicketTypes {
+		remaining += ticketType.Remaining
+	}
+	metrics.SetTicketRemaining(eventID, remaining)
 }

@@ -14,6 +14,7 @@ import (
 	"ticketing-system/backend/bootstrap"
 	"ticketing-system/backend/config"
 	"ticketing-system/backend/database"
+	metrics "ticketing-system/backend/metrics"
 	"ticketing-system/backend/pkg"
 	"ticketing-system/backend/pkg/storage"
 	"ticketing-system/backend/routes"
@@ -54,35 +55,45 @@ var (
 		},
 		[]string{"method", "path"},
 	)
+
 )
 
 func init() {
 	prometheus.MustRegister(httpRequestsTotal)
 	prometheus.MustRegister(httpRequestDuration)
+	metrics.Register()
 }
 
 func initTracer() *sdktrace.TracerProvider {
-	ctx := context.Background()
+    ctx := context.Background()
 
-	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithInsecure(),
-		otlptracehttp.WithEndpoint("jaeger-collector.monitoring.svc.cluster.local:4318"),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create OTLP exporter: %v", err)
-	}
+    endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    
+    if endpoint == "" {
+        endpoint = "localhost:4318"
+        log.Println("OTEL_EXPORTER_OTLP_ENDPOINT not set, defaulting to localhost:4318")
+    }
 
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("ticket-service"),
-		)),
-	)
+    exporter, err := otlptracehttp.New(ctx,
+        otlptracehttp.WithInsecure(),
+        otlptracehttp.WithEndpoint(endpoint), 
+    )
+    if err != nil {
+        log.Printf("Failed to create OTLP exporter: %v. Tracing will be disabled.", err)
+        return nil
+    }
 
-	otel.SetTracerProvider(tp)
-	return tp
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithSampler(sdktrace.AlwaysSample()),
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(resource.NewWithAttributes(
+            semconv.SchemaURL,
+            semconv.ServiceNameKey.String("ticket-service"),
+        )),
+    )
+
+    otel.SetTracerProvider(tp)
+    return tp
 }
 
 func metricsMiddleware() gin.HandlerFunc {
