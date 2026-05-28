@@ -118,7 +118,5 @@ jobs:
         if [ "${{ needs.check-changes.outputs.backend }}" == "true" ]; then
           echo "Updating Backend Deployment..."
           kubectl set image deployment/backend-deployment backend=$BASE_IMAGE/backend:${{ github.sha }}
-          echo "Injecting Cloud Jaeger Endpoint to Backend..."
-          kubectl set env deployment/backend-deployment OTEL_EXPORTER_OTLP_ENDPOINT=jaeger-collector.monitoring.svc.cluster.local:4318
           kubectl rollout status deployment/backend-deployment --timeout=120s
         fi

@@ -27,13 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-
 	"gorm.io/plugin/opentelemetry/tracing"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 )
@@ -65,35 +58,8 @@ func init() {
 }
 
 func initTracer() *sdktrace.TracerProvider {
-    ctx := context.Background()
-
-    endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    
-    if endpoint == "" {
-        endpoint = "localhost:4318"
-        log.Println("OTEL_EXPORTER_OTLP_ENDPOINT not set, defaulting to localhost:4318")
-    }
-
-    exporter, err := otlptracehttp.New(ctx,
-        otlptracehttp.WithInsecure(),
-        otlptracehttp.WithEndpoint(endpoint), 
-    )
-    if err != nil {
-        log.Printf("Failed to create OTLP exporter: %v. Tracing will be disabled.", err)
-        return nil
-    }
-
-    tp := sdktrace.NewTracerProvider(
-        sdktrace.WithSampler(sdktrace.AlwaysSample()),
-        sdktrace.WithBatcher(exporter),
-        sdktrace.WithResource(resource.NewWithAttributes(
-            semconv.SchemaURL,
-            semconv.ServiceNameKey.String("ticket-service"),
-        )),
-    )
-
-    otel.SetTracerProvider(tp)
-    return tp
+    log.Println("Tracing disabled (no backend configured)")
+    return nil
 }
 
 func metricsMiddleware() gin.HandlerFunc {
@@ -134,10 +100,11 @@ func main() {
 
 	// tracer
 	tp := initTracer()
-	defer tp.Shutdown(context.Background())
-
+	if tp != nil {
+		defer tp.Shutdown(context.Background())
+	}
 	db := database.Connect(cfg)
-	_ = db.Use(tracing.NewPlugin())
+	// _ = db.Use(tracing.NewPlugin())
 
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
 	if redisClient != nil {
@@ -164,7 +131,6 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	router.Use(otelgin.Middleware("ticket-service"))
 
 	// metrics middleware
 	router.Use(metricsMiddleware())
