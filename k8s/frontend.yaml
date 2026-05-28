@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/HowardHuang1225/corporate-event-ticketing-system-team13/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080" 
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: nginx-config-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf # 僅覆蓋單一檔案，不破壞原容器內其他 Nginx 配置
+      volumes:
+      - name: nginx-config-volume
+        configMap:
+          name: nginx-config # 對應剛才建立的 ConfigMap 名字
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
+  ports:
+  - protocol: TCP
+    port: 8080        
+    targetPort: 8080    
+    nodePort: 30080   # Local development friendly NodePort for external access (change to LoadBalancer for AKS deployment)
+  type: NodePort # Local development friendly service type (change to LoadBalancer for AKS deployment)# force trigger cd trigger 2026
+# fix upper-case trigger 2026
