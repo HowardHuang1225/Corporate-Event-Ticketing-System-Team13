@@ -26,15 +26,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-
-	"gorm.io/plugin/opentelemetry/tracing"
-	"github.com/redis/go-redis/extra/redisotel/v9"
 )
 
 var (
@@ -59,30 +50,6 @@ var (
 func init() {
 	prometheus.MustRegister(httpRequestsTotal)
 	prometheus.MustRegister(httpRequestDuration)
-}
-
-func initTracer() *sdktrace.TracerProvider {
-	ctx := context.Background()
-
-	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithInsecure(),
-		otlptracehttp.WithEndpoint("jaeger-collector.monitoring.svc.cluster.local:4318"),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create OTLP exporter: %v", err)
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("ticket-service"),
-		)),
-	)
-
-	otel.SetTracerProvider(tp)
-	return tp
 }
 
 func metricsMiddleware() gin.HandlerFunc {
@@ -121,17 +88,10 @@ func main() {
 
 	cfg := config.Load()
 
-	// tracer
-	tp := initTracer()
-	defer tp.Shutdown(context.Background())
 
 	db := database.Connect(cfg)
-	_ = db.Use(tracing.NewPlugin())
 
 	redisClient := pkg.NewRedisClient(cfg.RedisURL)
-	if redisClient != nil {
-		redisotel.InstrumentTracing(redisClient)
-	}
 
 	minioService := storage.NewMinioService(
 		cfg.MinioEndpoint,
@@ -152,8 +112,6 @@ func main() {
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "traceparent", "tracestate"},
 		AllowCredentials: true,
 	}))
-
-	router.Use(otelgin.Middleware("ticket-service"))
 
 	// metrics middleware
 	router.Use(metricsMiddleware())
