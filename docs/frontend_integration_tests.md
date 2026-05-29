@@ -44,7 +44,8 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 - 在活動詳情選擇票種並送出申請
 - 驗證 `/applications` payload 包含 `event_id`、`ticket_type_id`、`quantity`、`idempotency_key`
 - 申請成功後進入「我的票券」
-- 驗證自動核准的申請記錄、未使用電子票券與 QR token 會顯示
+- 驗證自動核准的申請記錄、未使用電子票券與動態 QR token 會顯示
+- QR token 以 `qr_token|otp` 格式呈現，integration test 會 mock `generateTOTP` 讓動態碼固定
 - 員工在「我的票券」確認退票後，會呼叫 `/tickets/:id/cancel`
 - 退票成功後會重新查詢票券資料，確保 React Query invalidate/refetch 流程可串起來
 
@@ -57,6 +58,7 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 - Manager 帶著既有 token 進入 `/manage/events`
 - 建立活動草稿並送出 `/events`
 - 驗證活動 payload 會帶入標題、地點與地域
+- 活動建立表單測試會排除圖片/PDF 上傳欄位，避免 file input 影響文字與日期欄位定位
 - 透過側邊導覽切到「現場核銷」
 - 輸入含空白的 QR token 後送出核銷
 - 驗證 `/checkin` payload 會 trim QR token

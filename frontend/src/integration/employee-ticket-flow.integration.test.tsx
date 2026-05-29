@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
+import { generateTOTP } from '../utils/totp'
 
 vi.mock('../api/client', () => ({
   default: {
@@ -14,6 +15,12 @@ vi.mock('../api/client', () => ({
 vi.mock('uuid', () => ({
   v4: vi.fn(() => 'fixed-integration-idempotency-key'),
 }))
+
+vi.mock('../utils/totp', () => ({
+  generateTOTP: vi.fn(),
+}))
+
+const generateTOTPMock = vi.mocked(generateTOTP)
 
 const employeeUser = {
   id: 'employee-integration-1',
@@ -116,6 +123,8 @@ describe('員工票券整合流程', () => {
     window.history.pushState({}, '', '/events')
     vi.mocked(api.get).mockReset()
     vi.mocked(api.post).mockReset()
+    generateTOTPMock.mockReset()
+    generateTOTPMock.mockResolvedValue('123456')
   })
 
   it('員工可從活動列表進入詳情，送出申請後在我的票券看到自動核准票券', async () => {
@@ -155,7 +164,8 @@ describe('員工票券整合流程', () => {
     expect(screen.getByText('未使用')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
-    expect(screen.getByText('QR-AUTO-APPROVED-001')).toBeInTheDocument()
+    expect(await screen.findByText('QR-AUTO-APPROVED-001|123456')).toBeInTheDocument()
+    expect(generateTOTPMock).toHaveBeenCalledWith('QR-AUTO-APPROVED-001', 60)
   })
 
   it('員工可在我的票券確認退票，並刷新票券與申請資料', async () => {

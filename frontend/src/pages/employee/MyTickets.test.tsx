@@ -5,6 +5,7 @@ import MyTickets from './MyTickets'
 import api from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { renderWithQueryClient } from '../../test/test-utils'
+import { generateTOTP } from '../../utils/totp'
 
 vi.mock('../../api/client', () => ({
   default: {
@@ -17,9 +18,14 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }))
 
+vi.mock('../../utils/totp', () => ({
+  generateTOTP: vi.fn(),
+}))
+
 const apiGet = api.get as Mock
 const apiPost = api.post as Mock
 const mockUseAuth = useAuth as Mock
+const generateTOTPMock = generateTOTP as Mock
 
 const employeeUser = {
   id: 'employee-1',
@@ -75,6 +81,8 @@ describe('MyTickets', () => {
     apiGet.mockReset()
     apiPost.mockReset()
     mockUseAuth.mockReset()
+    generateTOTPMock.mockReset()
+    generateTOTPMock.mockResolvedValue('123456')
     vi.unstubAllGlobals()
   })
 
@@ -89,7 +97,9 @@ describe('MyTickets', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
 
-    expect(screen.getByText('QR-TOKEN-123456')).toBeInTheDocument()
+    expect(await screen.findByText('QR-TOKEN-123456|123456')).toBeInTheDocument()
+    expect(generateTOTPMock).toHaveBeenCalledWith('QR-TOKEN-123456', 60)
+    expect(screen.getByText(/防偽驗證碼將在/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '收起 QR' })).toBeInTheDocument()
   })
 

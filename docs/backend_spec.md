@@ -56,8 +56,11 @@ backend/
     - 退票後自動回撥 `TicketType.Remaining` 並作廢該實體票券。
 
 ### 核銷流程 (Check-in)
-- 檔案：`handler/ticket.go`
-- 說明：管理員掃描 QR Code 後，系統驗證 `QRToken` 並確保 `is_used = false`。核銷成功後記錄 `Checkin` 資訊。
+- 檔案：`handler/manager/handler.go`, `service/ticket/service.go`, `pkg/totp/totp.go`
+- 說明：管理員掃描 QR Code 後，系統會解析 `qr_token`。目前支援兩種格式：
+  - 裸 UUID：`<qr_token>`，保留既有手動輸入與舊 QR 相容性。
+  - 動態 QR：`<qr_token>|<otp>`，其中 `otp` 是以 `qr_token` 與時間窗產生的 6 位數 TOTP。
+- 若收到動態 QR，後端會先驗證 OTP；錯誤或過期時回傳 `EXPIRED_QR`。驗證通過後再用 base `qr_token` 查票券，確保票券未核銷且未過期，成功後標記 `is_used = true` 並建立 `Checkin` 紀錄。
 
 ### 數據統計 (Report)
 - 檔案：`handler/report.go`
