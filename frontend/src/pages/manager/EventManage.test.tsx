@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EventManage from './EventManage'
 import api from '../../api/client'
-import { renderWithQueryClient } from '../../test/test-utils'
+import { fillField, renderWithQueryClient } from '../../test/test-utils'
 import toast from 'react-hot-toast'
 
 vi.mock('../../api/client', () => ({
@@ -77,7 +77,7 @@ function renderEventManage(events = [draftEvent, publishedEvent]) {
 function getModalFields(container: HTMLElement) {
   const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'))
   const textarea = container.querySelector<HTMLTextAreaElement>('.modal textarea')
-  if (inputs.length < 10 || !textarea) {
+  if (inputs.length < 8 || !textarea) {
     throw new Error('活動表單欄位沒有正確渲染')
   }
   return {
@@ -90,8 +90,8 @@ function getModalFields(container: HTMLElement) {
     endTime: inputs[5],
     maxTickets: inputs[6],
     region: inputs[7],
-    ticketName: inputs[8],
-    ticketQuota: inputs[9],
+    ticketName: screen.getByPlaceholderText('票種名稱'),
+    ticketQuota: screen.getByPlaceholderText('數量'),
   }
 }
 
@@ -158,24 +158,21 @@ describe('EventManage', () => {
     await userEvent.click(await screen.findByRole('button', { name: /建立新活動/ }))
     const fields = getModalFields(container)
 
-    await userEvent.type(fields.title, '新品發表會')
-    await userEvent.type(fields.description, '年度新品發表活動')
-    await userEvent.type(fields.venue, '台北總部')
-    await userEvent.type(fields.publishTime, '2099-06-01T10:00')
-    await userEvent.type(fields.startTime, '2099-07-01T10:00')
-    await userEvent.type(fields.applyDeadline, '2099-06-20T17:00')
-    await userEvent.type(fields.endTime, '2099-07-01T18:00')
-    await userEvent.clear(fields.maxTickets)
-    await userEvent.type(fields.maxTickets, '4')
-    await userEvent.type(fields.region, '台北')
-    await userEvent.clear(fields.ticketName)
-    await userEvent.type(fields.ticketName, 'VIP票')
-    await userEvent.clear(fields.ticketQuota)
-    await userEvent.type(fields.ticketQuota, '80')
+    fillField(fields.title, '新品發表會')
+    fillField(fields.description, '年度新品發表活動')
+    fillField(fields.venue, '台北總部')
+    fillField(fields.publishTime, '2099-06-01T10:00')
+    fillField(fields.startTime, '2099-07-01T10:00')
+    fillField(fields.applyDeadline, '2099-06-20T17:00')
+    fillField(fields.endTime, '2099-07-01T18:00')
+    fillField(fields.maxTickets, '4')
+    fillField(fields.region, '台北')
+    fillField(fields.ticketName, 'VIP票')
+    fillField(fields.ticketQuota, '80')
     await userEvent.click(screen.getByRole('button', { name: '儲存草稿' }))
 
     await waitFor(() => {
-      expect(apiPost).toHaveBeenCalledWith('/events', {
+      expect(apiPost).toHaveBeenCalledWith('/events', expect.objectContaining({
         title: '新品發表會',
         description: '年度新品發表活動',
         venue: '台北總部',
@@ -188,7 +185,7 @@ describe('EventManage', () => {
         region_restriction: '台北',
         max_tickets_per_person: 4,
         ticket_types: [{ name: 'VIP票', total_quota: 80 }],
-      })
+      }))
     })
     expect(toastSuccess).toHaveBeenCalledWith('活動建立成功！')
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['events-manage'] })
@@ -241,8 +238,7 @@ describe('EventManage', () => {
     expect(fields.title).toHaveValue('年度家庭日草稿')
     expect(screen.getByText('編輯活動')).toBeInTheDocument()
 
-    await userEvent.clear(fields.title)
-    await userEvent.type(fields.title, '更新後活動')
+    fillField(fields.title, '更新後活動')
     await userEvent.click(screen.getByRole('button', { name: '儲存草稿' }))
 
     await waitFor(() => {

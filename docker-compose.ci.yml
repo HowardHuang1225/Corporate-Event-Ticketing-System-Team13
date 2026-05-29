@@ -4,13 +4,13 @@ services:
     container_name: ts_postgres_ci
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ticketing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ticketing_system
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketing"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -19,39 +19,76 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: ts_minio_ci
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/ticketing-attachments || true &&
+      exit 0;
+      "
 
   backend:
     build:
       context: ./backend
     container_name: ts_backend_ci
-
-    environment:
-      DATABASE_URL: host=postgres user=postgres password=postgres dbname=ticketing port=5432 sslmode=disable
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: test-secret
-      PORT: 8001
-      ALLOWED_ORIGINS: http://frontend
-
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
-    expose:
-      - "8001"
+    environment:
+      DATABASE_URL: host=postgres user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB} port=5432 sslmode=disable
+      REDIS_URL: redis://redis:6379
+      PORT: 8001
+      ALLOWED_ORIGINS: "*"
+      JWT_SECRET: ${JWT_SECRET} 
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_NAME: ticketing-attachments
+
+    ports:
+      - "8001:8001"
 
   frontend:
     build:
       context: ./frontend
     container_name: ts_frontend_ci
-
-    environment:
-      VITE_API_URL: http://backend:8001
-
     depends_on:
       - backend
 
-    expose:
-      - "80"
+    environment:
+      - PORT=8080
+      - BACKEND_URL=${FRONTEND_BACKEND_URL}
+      - STORAGE_URL=${FRONTEND_STORAGE_URL}
+
+    ports:
+      - "8080:8080"

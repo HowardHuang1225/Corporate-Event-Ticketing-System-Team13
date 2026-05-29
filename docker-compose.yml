@@ -111,6 +111,7 @@ services:
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
       - MINIO_PUBLIC_ENDPOINT=${MINIO_PUBLIC_ENDPOINT}
+      - TEST_USER_PASSWORD=${TEST_USER_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,9 +125,9 @@ services:
     container_name: ts_frontend
     restart: always
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "8080:8080"
     environment:
-      - PORT=80
+      - PORT=8080
       - BACKEND_URL=${FRONTEND_BACKEND_URL:-http://backend:8001}
       - STORAGE_URL=${FRONTEND_STORAGE_URL:-http://minio:9000/}
     depends_on:

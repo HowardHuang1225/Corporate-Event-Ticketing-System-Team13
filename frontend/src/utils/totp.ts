@@ -12,7 +12,7 @@ export async function generateTOTP(secretString: string, windowSeconds = 15): Pr
   dataView.setBigUint64(0, BigInt(counter), false) // Big Endian
   
   // HMAC-SHA256
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, counterBuffer)
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new Uint8Array(counterBuffer))
   const hashArray = new Uint8Array(signature)
   
   // Dynamic Truncation

@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-ingress
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/upstream-vhost: "minio-service:9000"
+    nginx.ingress.kubernetes.io/proxy-set-headers: "Host: minio-service:9000"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - nthu-team13.duckdns.org
+    secretName: team13-tls-cert
+  rules:
+  - host: nthu-team13.duckdns.org
+    http:
+      paths:
+      - path: /minio-api(/|$)(.*)    
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: minio-service
+            port:
+              number: 9000

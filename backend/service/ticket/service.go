@@ -21,7 +21,48 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	ticketRequestTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ticket_requests_total",
+			Help: "Total number of ticket apply requests",
+		},
+		[]string{"status", "event_id", "method"},
+	)
+
+	ticketRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "ticket_request_duration_seconds",
+			Help:    "Ticket apply request duration in seconds",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5},
+		},
+		[]string{"method"},
+	)
+
+	remainingTickets = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ticket_remaining_count",
+			Help: "Remaining ticket count per event",
+		},
+		[]string{"event_id", "ticket_type"},
+	)
+
+	ticketVerifiedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ticket_verified_total",
+			Help: "Total number of successfully verified tickets",
+		},
+		[]string{"event_id"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(ticketRequestTotal, ticketRequestDuration, remainingTickets, ticketVerifiedTotal)
+}
 
 type Service struct {
 	db           *gorm.DB
@@ -82,6 +123,12 @@ type CheckinResult struct {
 }
 
 func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error) {
+	startTime := time.Now()
+    defer func() {
+        // 離開函式時，自動記錄這一次搶票 API 跑了幾秒
+        ticketRequestDuration.WithLabelValues("POST").Observe(time.Since(startTime).Seconds())
+    }()
+
 	if s.queue.Enabled {
 		return s.ApplyQueued(userID, req)
 	}
@@ -131,10 +178,15 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 
 	newStock, err := s.redis.DecrBy(ctx, inventoryKey, int64(req.Quantity)).Result()
 	if err != nil {
+		// 埋點：Redis 爆了，計數器計為 failed
+        ticketRequestTotal.WithLabelValues("failed", req.EventID, "POST").Inc()
 		return ApplyResult{}, apperror.New(503, "BUSY", "Inventory system busy")
 	}
 	if newStock < 0 {
 		s.redis.IncrBy(ctx, inventoryKey, int64(req.Quantity))
+		// 埋點：票賣完了扣量失敗，計數器計為 sold_out
+        ticketRequestTotal.WithLabelValues("sold_out", req.EventID, "POST").Inc()
+		remainingTickets.WithLabelValues(req.EventID, req.TicketTypeID).Set(0)
 		for attempt := 0; attempt < 3; attempt++ {
 			var existing model.Application
 			if err := s.db.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).First(&existing).Error; err == nil {
@@ -283,11 +335,18 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 	}
 
 	if err != nil {
+		// 埋點：DB 事務失敗（如版號衝突、死鎖）
+        ticketRequestTotal.WithLabelValues("db_error", req.EventID, "POST").Inc()
 		return ApplyResult{}, err
 	}
 	if !created {
 		return ApplyResult{Application: existingApp, Created: false}, nil
 	}
+	// 成功搶到票 埋點
+    ticketRequestTotal.WithLabelValues("success", req.EventID, "POST").Inc()
+    // 拿取扣完後最新的 Redis 庫存，Set 給 Prometheus
+    remainingTickets.WithLabelValues(req.EventID, req.TicketTypeID).Set(float64(newStock))
+
 	s.invalidateMyApplicationsCache(context.Background(), userID.String())
 	return ApplyResult{Application: createdApp, Created: true}, nil
 }
@@ -585,6 +644,8 @@ func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResul
 	if err != nil {
 		return CheckinResult{}, err
 	}
+	ticketVerifiedTotal.WithLabelValues(ticket.EventID.String()).Inc()
+	
 	return CheckinResult{Message: "Check-in successful!", Ticket: ticket}, nil
 }
 

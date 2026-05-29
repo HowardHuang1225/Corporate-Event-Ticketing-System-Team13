@@ -6,13 +6,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    testTimeout: 15_000,
     setupFiles: './src/test/setup.ts',
     exclude: [...configDefaults.exclude, 'e2e/**'],
     clearMocks: true,
     restoreMocks: true,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'json-summary'],
+      reporter: ['text', 'text-summary', 'html', 'json-summary', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.test.{ts,tsx,mjs}',

@@ -191,3 +191,120 @@ TICKET_QUEUE_ENABLED=true
 In this mode, `POST /v1/applications` quickly reserves inventory in Redis, appends the request to a Redis Stream, and returns `202 Accepted` with status `queued`. Background workers then create the final application and tickets in PostgreSQL. This reduces burst pressure on the database and is useful for cloud-native high-concurrency experiments.
 
 See `docs/queue_waiting_room.md` for the full design and testing steps.
+
+---
+
+## CI/CD 與 Kubernetes 監控設計說明
+
+本專案採用「GitHub Actions + GHCR + AKS + Prometheus/Grafana」的 Cloud-Native 交付模式。  
+核心目標是：**只重建有變更的服務、維持可回滾的映像版本、部署後立即可觀測**。
+
+### 1) CI/CD 設計邏輯（`.github/workflows/deployment.yml`）
+
+- **觸發條件**
+  - `push` 到 `main` 或 `feat/*` 分支。
+  - 且變更路徑包含 `frontend/**`、`backend/**`、`api/**`、`k8s/**`、workflow 檔等。
+- **變更偵測（paths-filter）**
+  - `check-changes` job 先判斷是 frontend、backend 或兩者皆有變更。
+  - 只對有變更的服務建置與推送，降低 CD 成本與時間。
+- **映像建置與版本策略**
+  - 使用 `docker/build-push-action` + Buildx。
+  - 推送到 GHCR，tag 使用 `github.sha`，確保每次部署可追溯到特定 commit。
+- **部署到 AKS**
+  - 透過 `KUBE_CONFIG_DATA` 設定 kube context。
+  - 建立/更新 `ghcr-auth` image pull secret，讓叢集可拉取私有 GHCR 映像。
+  - `kubectl apply -f k8s/ -R` 先套用所有基礎資源。
+  - 針對有變更的服務執行 `kubectl set image` 與 `rollout status`（滾動更新 + 健康檢查等待）。
+
+### 2) CD 流程（從 commit 到上線）
+
+1. 開發者 push 程式碼到 `main` 或 `feat/*`。  
+2. Actions 判斷變更範圍（frontend/backend）。  
+3. 建置並推送對應 Docker image 到 GHCR（tag = commit SHA）。  
+4. 連線 AKS、更新 `ghcr-auth`、apply `k8s/` manifests。  
+5. 對有變更的 deployment 設定新 image 並等待 rollout 完成。  
+6. 新版本 Pod 就緒後對外服務；失敗時可透過 deployment revision 進行回滾。  
+
+### 3) `k8s/` 目錄部署設計（職責分層）
+
+- **應用層**
+  - `frontend.yaml`: 前端 Deployment + Service（目前為 NodePort，便於開發/展示）。
+  - `backend.yaml`: 後端 Deployment + Service，透過 ConfigMap/Secret 注入環境變數。
+- **配置與敏感資料**
+  - `configmap.yaml`: 非敏感設定（DB host、Redis URL、Queue 參數、MinIO endpoint 等）。
+  - `secret.yaml`: 敏感資訊（DB password、JWT secret、MinIO root credentials）。
+- **資料服務層**
+  - `postgres.yaml`: PostgreSQL + PVC（10Gi）。
+  - `redis.yaml`: Redis + AOF + PVC（5Gi）。
+  - `minio.yaml`: MinIO + PVC（10Gi）+ bucket 初始化 Job。
+- **流量入口與憑證**
+  - `ingress.yaml`: 主站域名入口與 TLS。
+  - `minio-ingress.yaml`: `/minio-api` 路徑轉發到 MinIO API。
+  - `clusterissuer.yaml`: cert-manager + Let's Encrypt ACME 簽發憑證。
+  - `nginx-config.yaml`: 前端 Nginx 反向代理 `/v1/` 到 backend service。
+- **監控層**
+  - `monitoring/namespace.yaml`: 獨立 `monitoring` namespace。
+  - `monitoring/prometheus-cm.yaml` + `prometheus-setup.yaml`: Prometheus 設定與部署。
+  - `monitoring/kube-state-metrics.yaml`: 叢集物件狀態指標來源。
+  - `monitoring/grafana-setup.yaml`: Grafana + PVC + Service。
+  - `monitoring/dashboard.json`: 匯入用 dashboard（K8s 資源觀測面板）。
+
+### 4) 監控設計邏輯（Prometheus + Grafana）
+
+#### A. 指標暴露來源
+
+- backend 在 `main.go` 註冊 `/metrics`（Prometheus handler）。
+- middleware 持續記錄：
+  - `http_requests_total`（method/path/status）
+  - `http_request_duration_seconds`（method/path）
+- 票務業務指標（`backend/metrics/ticket_metrics.go`）：
+  - `event_ticket_remaining`
+  - `ticket_apply_total`
+  - `ticket_redeem_total`
+- `backend.yaml` 的 pod annotation 啟用 scrape：
+  - `prometheus.io/scrape: "true"`
+  - `prometheus.io/path: "/metrics"`
+  - `prometheus.io/port: "8001"`
+
+#### B. Prometheus 抓取策略
+
+- `scrape_interval: 15s`，每 15 秒抓取一次。
+- 除了監控 Prometheus 自身，也透過 `kubernetes_sd_configs` 自動發現 Pod。
+- relabel 會將 namespace/pod 名稱等 metadata 帶入 labels，便於 Grafana 查詢與分群。
+
+#### C. Grafana 呈現策略
+
+- Grafana 使用 PVC 保留 dashboard 與設定。
+- 可匯入 `k8s/monitoring/dashboard.json` 做叢集級監控（node/pod/resource/network）。
+- 建議搭配自訂 panel 針對本專案業務指標（票券申請、核銷、剩餘票量）做告警門檻。
+
+### 5) 建議套用順序（首次部署）
+
+```bash
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/minio.yaml
+kubectl apply -f k8s/nginx-config.yaml
+kubectl apply -f k8s/backend.yaml
+kubectl apply -f k8s/frontend.yaml
+kubectl apply -f k8s/clusterissuer.yaml
+kubectl apply -f k8s/ingress.yaml
+kubectl apply -f k8s/minio-ingress.yaml
+
+kubectl apply -f k8s/monitoring/namespace.yaml
+kubectl apply -f k8s/monitoring/prometheus-cm.yaml
+kubectl apply -f k8s/monitoring/prometheus-setup.yaml
+kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
+kubectl apply -f k8s/monitoring/grafana-setup.yaml
+```
+
+### 6) 目前架構重點（你報告可以直接講）
+
+- **效率**：paths-filter 避免每次都全量 build/deploy。  
+- **可追溯**：image tag 綁 commit SHA，問題版本可快速定位。  
+- **可維運**：ConfigMap/Secret 分離，參數與密碼解耦。  
+- **可觀測**：系統指標（HTTP）+ 業務指標（票務）+ 叢集指標（kube-state-metrics）三層監控。  
+- **可擴展**：backend 與 frontend 皆為 Deployment，可直接水平擴展 replicas。  
+- **高併發友善**：Queue 模式（Redis Stream）與監控結合，可觀察尖峰流量下延遲與申請量。  

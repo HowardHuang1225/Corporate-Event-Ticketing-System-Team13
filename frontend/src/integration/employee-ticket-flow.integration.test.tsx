@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
+import { resetAppQueryClient } from '../test/test-utils'
 import { generateTOTP } from '../utils/totp'
 
 vi.mock('../api/client', () => ({
@@ -119,6 +120,7 @@ function configureEmployeeApi() {
 
 describe('員工票券整合流程', () => {
   beforeEach(() => {
+    resetAppQueryClient()
     localStorage.clear()
     window.history.pushState({}, '', '/events')
     vi.mocked(api.get).mockReset()

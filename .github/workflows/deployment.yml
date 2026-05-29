@@ -1,0 +1,124 @@
+name: "CD to AKS"
+
+on:
+  push:
+    branches:
+      - main  
+    paths:
+      - 'k8s/**'
+      - 'frontend/**'
+      - 'backend/**'
+      - 'api/**' 
+      - docker-compose.yml
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+      id: filter
+      with:
+        filters: |
+          frontend:
+            - 'frontend/**'
+            - 'api/**'       
+          backend:
+            - 'backend/**'
+            - 'api/**'      
+
+  build-and-deploy:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Set lower-case image path
+      id: vars
+      run: |
+        IMAGE_PATH=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        echo "image_path=$IMAGE_PATH" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@1f1b6c392c624d9a3ca038aacd710ebbf7976ca8
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@d66d3a395860a4f949fac3766acd41dbf1f71ab5
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_PAT }}
+
+    - name: Build and Push Frontend Image
+      if: needs.check-changes.outputs.frontend == 'true'
+      uses: docker/build-push-action@20ae4782b87368a12cc0f6689b41c7b08b8a94dd
+      with:
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        push: true
+        tags: ${{ steps.vars.outputs.image_path }}/frontend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and Push Backend Image
+      if: needs.check-changes.outputs.backend == 'true'
+      uses: docker/build-push-action@20ae4782b87368a12cc0f6689b41c7b08b8a94dd
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tags: ${{ steps.vars.outputs.image_path }}/backend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Set Kubernetes Context
+      uses: azure/k8s-set-context@810c4828964670ccf8add9cca2d0768c9d1f7d41
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
+
+
+    - name: Deploy and Inject Images to AKS
+      env:
+        KUBECONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+      run: |
+        kubectl create secret docker-registry ghcr-auth \
+          --docker-server=ghcr.io \
+          --docker-username=${{ github.actor }} \
+          --docker-password="$GHCR_TOKEN" \
+          --docker-email=team13@nthu.edu.tw \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        kubectl apply -f k8s/ -R || true
+        
+        BASE_IMAGE="${{ steps.vars.outputs.image_path }}"
+        echo "[DEBUG] Base GHCR Path -> $BASE_IMAGE"
+        
+        if [ "${{ needs.check-changes.outputs.frontend }}" == "true" ]; then
+          echo "Updating Frontend Deployment..."
+          kubectl set image deployment/frontend-deployment frontend=$BASE_IMAGE/frontend:${{ github.sha }}
+          kubectl rollout status deployment/frontend-deployment --timeout=120s
+        fi
+
+        if [ "${{ needs.check-changes.outputs.backend }}" == "true" ]; then
+          echo "Updating Backend Deployment..."
+          kubectl set image deployment/backend-deployment backend=$BASE_IMAGE/backend:${{ github.sha }}
+          kubectl rollout status deployment/backend-deployment --timeout=120s
+        fi
