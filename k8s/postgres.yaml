@@ -28,6 +28,7 @@ spec:
     spec:
       securityContext:
         fsGroup: 999
+      automountServiceAccountToken: false
       containers:
       - name: postgres
         image: postgres:15-alpine 
@@ -54,9 +55,11 @@ spec:
           requests:
             cpu: "100m"
             memory: "256Mi"
+            ephemeral-storage: "500Mi"
           limits:
             cpu: "500m"
             memory: "512Mi"
+            ephemeral-storage: "2Gi"
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data 

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@18f2510ee26f0aa9f2d4e9d31600b529a1b64e54
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -57,9 +57,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DB_HOST: localhost
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ticketing_system
+      POSTGRES_PASSWORD: postgres
       DB_NAME: ticketing_system
       DB_PORT: 5432
       REDIS_URL: redis://localhost:6379
@@ -113,7 +113,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@3a919529898de77ec3da874e3063ca18c094f570
         with:
           version: v2.12
           working-directory: ./backend
@@ -130,7 +130,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm ci --ignore-scripts
 
       - name: Run tests with coverage
         run: |
@@ -173,18 +173,23 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     env:
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: ticketing_system
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ticketing_system
+      POSTGRES_PASSWORD: postgres
       DB_PORT: 5432
       REDIS_PORT: 6379
       JWT_SECRET: test-secret
+      TEST_USER_PASSWORD: password
       PORT: 8080
       ALLOWED_ORIGINS: "*"
       MINIO_ENDPOINT: localhost:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET_NAME: ticketing-attachments
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      FRONTEND_BACKEND_URL: http://backend:8001
+      FRONTEND_STORAGE_URL: http://minio:9000/      
     steps:
       - uses: actions/checkout@v4
 

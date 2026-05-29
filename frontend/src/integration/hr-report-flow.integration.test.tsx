@@ -126,7 +126,7 @@ describe('HR 報表整合流程', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: '統計報表' })).toBeInTheDocument()
-    expect(await screen.findByText('活動總覽')).toBeInTheDocument()
+    expect(await screen.findByText('活動列表')).toBeInTheDocument()
     expect(screen.getAllByText('年度家庭日').length).toBeGreaterThan(0)
 
     await userEvent.selectOptions(screen.getByRole('combobox'), 'event-report-1')
