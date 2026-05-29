@@ -26,8 +26,8 @@ frontend/
 │   │   ├── hr/         # HR 專用
 │   │   │   └── Reports.tsx # 視覺化統計報表 (部門、廠區分佈、CSV 匯出)
 │   │   ├── manager/    # 管理員專用
-│   │   │   ├── EventManage.tsx # 活動維護 (含時間格式 ISO 轉換)
-│   │   │   ├── Applications.tsx # 審核報名申請
+│   │   │   ├── EventManage.tsx # 活動維護 (含時間格式 ISO 轉換、圖片/PDF 上傳)
+│   │   │   ├── Applications.tsx # Legacy 申請審核頁，目前員工申請已自動核准
 │   │   │   └── CheckIn.tsx      # 現場掃描核銷 (顯示詳細員工廠區資訊)
 │   │   └── employee/   # 一般員工專用
 │   │       └── MyTickets.tsx    # 我的票券 (QR Code 生成)
@@ -43,6 +43,7 @@ frontend/
 - 檔案：`pages/employee/MyTickets.tsx`
 - 說明：
   - **電子票券 (🎫)**：顯示已核准的票券與 QR Code。
+  - **動態防偽 QR**：QR Code 內容會由後端回傳的 `ticket.qr_token` 加上前端依時間產生的 6 位數 TOTP 組成，格式為 `qr_token|otp`，目前每 60 秒更新一次並顯示倒數提示。
   - **單張退票**：每張票券卡片均設有「退票」按鈕。點擊後會調用後端接口，作廢票券並釋放額度。
   - **申請紀錄 (📋)**：顯示所有申請歷史，包含「已核准」與自動產生的「退票 (Cancelled)」紀錄，提供完整的審計軌跡。
 
@@ -52,7 +53,7 @@ frontend/
 
 ### 核銷流程 (Check-in System)
 - 檔案：`pages/manager/CheckIn.tsx`
-- 說明：管理員輸入/掃描 Token 後，系統會串接後端 API 進行核銷，並同步顯示該名員工的「姓名、工號、部門、廠區」以供核對。
+- 說明：管理員輸入/掃描 Token 後，系統會串接後端 API 進行核銷。掃描員工票券時通常會取得 `qr_token|otp` 動態格式；手動輸入欄位會原樣 trim 後送出。核銷成功後會同步顯示該名員工的「姓名、工號、部門、廠區」以供核對。
 
 ### 數據報表 (HR Insights)
 - 檔案：`pages/hr/Reports.tsx`

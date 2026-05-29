@@ -11,7 +11,7 @@
 - Redis 測票券申請庫存與 idempotency 相關流程
 - 專案自訂 `backend/test_utils` 測試工具
 
-目前共有 41 個 `*_test.go` 檔案。
+目前共有 45 個 `*_test.go` 檔案，包含實際測試檔與 helper / fixture 測試檔。
 
 ## 執行方式
 
@@ -106,6 +106,7 @@ go test ./scheduler
 檔案：
 
 - `backend/handler/auth/handler_test.go`
+- `backend/handler/auth/data_test.go`
 - `backend/service/auth/service_test.go`
 - `backend/service/auth/service_helpers_test.go`
 
@@ -189,6 +190,28 @@ go test ./scheduler
 - 核銷過期票券會回傳 `TICKET_EXPIRED`
 - 過期票券不可被標記為已使用，也不可新增 checkin 紀錄
 
+### Integration
+
+檔案：
+
+- `backend/integration/employee_application_flow_test.go`
+- `backend/integration/ticket_lifecycle_flow_test.go`
+- `backend/integration/role_matrix_test.go`
+- `backend/integration/shared_utils_test.go`
+
+測試內容：
+
+- 使用真實 `/v1` router、JWT middleware、handler、service、DB transaction 與 Redis 測員工申請流程
+- 員工登入後送出申請會自動核准、建立 application 與對應 ticket，且 DB / Redis 庫存同步扣除
+- 相同 `idempotency_key` 重送不會重複建 application、票券或扣庫存
+- 員工可查到自己的已核准申請與票券
+- 員工退還未使用票券會刪除原票券、回補庫存並建立 cancelled audit application
+- manager 使用 QR token 核銷票券後，票券會標記 used 並建立 checkin
+- 重複核銷會回傳 `ALREADY_CHECKED_IN`
+- 已核銷票券不可退票，會回傳 `ALREADY_USED`
+- 真實 route 權限矩陣會驗證未登入、employee、event_manager、HR 對主要 `/v1` routes 的允許與拒絕狀態
+- `shared_utils_test.go` 提供 integration 測試共用的 setup、登入、HTTP request、Redis cleanup 與 response decode helper
+
 ### Manager Handler
 
 檔案：
@@ -268,6 +291,7 @@ go test ./scheduler
 - 測試檔案中的註解、進度與子測試描述大多已使用中文
 - manager 單筆/批次審核測試目前是 legacy 且跳過，符合自動核准的新流程
 - `ticket_apply_test.go` 仍有舊命名與舊進度文字，但實際 assertion 已是自動核准的 `approved`
+- 動態 QR 核銷目前後端實作可解析 `qr_token|otp` 並保留裸 UUID token 相容性；既有後端測試主要仍覆蓋 UUID token 核銷流程，動態 OTP 成功/失敗案例尚未補齊
 - 若之後要清理測試命名，可以把 `ApplyTicketCreatesPendingApplication` 改成描述自動核准的名稱，但這會是測試檔維護工作，不影響目前行為
 
 ## 後續可補方向
@@ -284,14 +308,18 @@ go test ./scheduler
 
    service 已測單張退票，但 handler 層可補 `/tickets/:id/cancel` 權限、成功 response、票券不存在、票券屬於別人、已核銷不可退票等情境。
 
-4. Route 權限矩陣
+4. 動態 QR 核銷
 
-   目前只測 employee 不可存取 manager event route。可補 manager / hr / employee 對主要 `/v1` routes 的允許與拒絕矩陣。
+   可補合法 `qr_token|otp` 可核銷、錯誤或過期 OTP 回傳 `EXPIRED_QR`、格式錯誤維持 `VALIDATION_ERROR`，以及裸 UUID token 相容流程仍可使用。
 
-5. HR 匯出錯誤流程
+5. Route 權限矩陣
+
+   目前已有 `backend/integration/role_matrix_test.go` 覆蓋一組基礎 `/v1` route 權限矩陣。可再擴充 manager / hr / employee 對更多主要 routes 的允許與拒絕案例。
+
+6. HR 匯出錯誤流程
 
    可補匯出不存在活動、沒有統計資料、權限不足時的 response。
 
-6. Scheduler 邊界
+7. Scheduler 邊界
 
    可補同時間邊界、重複執行 idempotency，以及 scheduler 不應覆蓋手動 closed/ended 狀態的更多案例。

@@ -6,9 +6,9 @@ import (
 
 	"ticketing-system/backend/model"
 	"ticketing-system/backend/repository"
+	eventsvc "ticketing-system/backend/service/event"
 	ticketsvc "ticketing-system/backend/service/ticket"
 	utils "ticketing-system/backend/test_utils"
-	eventsvc "ticketing-system/backend/service/event"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -74,7 +74,7 @@ func setupManagerTicketLifecycleTest(t *testing.T) (*gorm.DB, managerApplication
 func newManagerTicketLifecycleRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
 	eventService := eventsvc.New(repos)
-    ticketService := ticketsvc.New(repos)
+	ticketService := ticketsvc.New(repos)
 
 	handler := New(eventService, ticketService, nil, nil)
 

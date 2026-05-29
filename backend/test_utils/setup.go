@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -15,6 +18,30 @@ import (
 
 	"ticketing-system/backend/model"
 )
+
+func init() {
+	loadTestEnv()
+}
+
+func loadTestEnv() {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		_ = godotenv.Load(".env", "../.env")
+		return
+	}
+
+	backendDir := filepath.Dir(filepath.Dir(file))
+	repoDir := filepath.Dir(backendDir)
+
+	for _, envPath := range []string{
+		filepath.Join(backendDir, ".env"),
+		filepath.Join(repoDir, ".env"),
+	} {
+		if _, err := os.Stat(envPath); err == nil {
+			_ = godotenv.Load(envPath)
+		}
+	}
+}
 
 func OpenTestDB(t *testing.T, paramDB []any) (*gorm.DB, error) {
 	t.Helper()
@@ -107,7 +134,7 @@ func envOrDefault(key, fallback string) string {
 }
 
 func SeedTestRole(db *gorm.DB, users []model.User, needReturn bool) ([]model.User, error) {
-	testSecret := envOrDefault("TEST_USER_PASSWORD", "fallback_seed_key_123")
+	testSecret := envOrDefault("TEST_USER_PASSWORD", "password")
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testSecret), bcrypt.DefaultCost)
 	if err != nil {

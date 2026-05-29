@@ -115,9 +115,7 @@ function configureManagerApi() {
 }
 
 function getEventCreateFields(container: HTMLElement) {
-  const inputs = Array.from(
-    container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'),
-  )
+  const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'))
   const textarea = container.querySelector<HTMLTextAreaElement>('.modal textarea')
   if (inputs.length < 8 || !textarea) {
     throw new Error('活動建立表單欄位沒有正確渲染')

@@ -75,9 +75,7 @@ function renderEventManage(events = [draftEvent, publishedEvent]) {
 }
 
 function getModalFields(container: HTMLElement) {
-  const inputs = Array.from(
-    container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'),
-  )
+  const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'))
   const textarea = container.querySelector<HTMLTextAreaElement>('.modal textarea')
   if (inputs.length < 8 || !textarea) {
     throw new Error('活動表單欄位沒有正確渲染')
@@ -178,6 +176,8 @@ describe('EventManage', () => {
         title: '新品發表會',
         description: '年度新品發表活動',
         venue: '台北總部',
+        image_url: '',
+        document_url: '',
         publish_time: isoFromLocal('2099-06-01T10:00'),
         start_time: isoFromLocal('2099-07-01T10:00'),
         apply_deadline: isoFromLocal('2099-06-20T17:00'),

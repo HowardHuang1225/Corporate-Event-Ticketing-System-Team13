@@ -1,6 +1,6 @@
 # 前端 Unit Test 紀錄
 
-本文記錄目前前端 Vitest unit test 涵蓋的範圍、測試指令與覆蓋率狀態。Integration test 詳細紀錄請見 `docs/frontend_integration_tests.md`。
+本文記錄目前前端 Vitest unit test 涵蓋的範圍、測試指令與覆蓋率狀態。Integration test 詳細紀錄請見 `docs/frontend_integration_tests.md`，Playwright end-to-end test 詳細紀錄請見 `docs/frontend_e2e_tests.md`。
 
 ## 測試指令
 
@@ -8,6 +8,7 @@
 
 ```bash
 npm test
+npm run test:e2e
 npm run test:coverage
 npm run lint
 npm run build
@@ -15,10 +16,11 @@ npm run build
 
 ## 測試架構
 
-目前前端測試主要分成兩類：
+目前前端測試主要分成三類：
 
 - Unit test：放在被測檔案旁邊，命名為 `*.test.ts` 或 `*.test.tsx`
 - Integration test：放在 `frontend/src/integration/`，命名為 `*.integration.test.tsx`
+- End-to-end test：使用 Playwright，放在 `frontend/e2e/`，命名為 `*.spec.ts`
 
 共用測試工具放在：
 
@@ -118,6 +120,7 @@ npm run build
 - 申請失敗會顯示後端錯誤
 - 我的票券會顯示申請記錄與電子票券
 - QR 可以展開/收合
+- QR 展開後會透過 mock `generateTOTP` 產生固定動態碼，驗證畫面顯示 `qr_token|otp` 格式與防偽倒數提示
 - 退票取消時不呼叫 API
 - 退票成功會刷新票券與申請資料
 - 退票失敗會顯示錯誤
@@ -142,6 +145,8 @@ npm run build
 - 核銷紀錄活動篩選會送出 `event_id`
 - 活動管理會載入活動列表並顯示不同狀態 badge
 - 建立活動會把日期轉成 ISO，空日期送空字串，空地域送 `null`
+- 建立活動 payload 會包含未上傳時的 `image_url`、`document_url` 空字串
+- 活動管理 modal 測試取欄位時會排除圖片/PDF 的 `input[type="file"]`，避免新增上傳欄位造成文字與日期欄位索引偏移
 - 編輯活動會預填資料並送出 update API
 - 表單票種可以新增與移除
 - 發布前會檢查發布時間、申請截止時間、開始時間、結束時間
@@ -168,8 +173,12 @@ npm run build
 
 Integration test 已拆到獨立文件記錄：`docs/frontend_integration_tests.md`。
 
+## End-to-End Tests
+
+Playwright end-to-end test 已拆到獨立文件記錄：`docs/frontend_e2e_tests.md`。
+
 ## 後續可補方向
 
 - 針對 branch coverage 仍偏低的 fallback UI 再補更細案例，例如缺少巢狀資料時的 `—` 顯示
-- 補 Playwright end-to-end test，涵蓋瀏覽器層級的登入、申請票券、核銷與報表流程
+- 擴充 Playwright end-to-end test 的錯誤分支，例如失效 token、排隊申請與 CSV 匯出失敗流程
 - 若後續產品邏輯固定，可再把目前部分 source contract test 改成真正元件互動測試

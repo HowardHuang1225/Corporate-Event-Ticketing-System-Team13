@@ -1,6 +1,6 @@
 # Ticketing System (員工票務系統)
 
-本專案是一個基於 Cloud Native 原則設計的企業活動票務系統。支援員工報名、管理員審核、現場 QR Code 核銷以及 HR 統計報表功能。
+本專案是一個基於 Cloud Native 原則設計的企業活動票務系統。支援員工報名自動核准、電子票券、現場動態 QR Code 核銷以及 HR 統計報表功能。
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ backend/
 │   ├── auth/             # 登入與身份驗證 API
 │   ├── employee/         # 員工活動瀏覽、報名、票券 API
 │   ├── hr/               # HR 報表 API
-│   ├── manager/          # 管理員活動、申請審核、核銷 API
+│   ├── manager/          # 管理員活動、現場核銷 API
 │   └── shared/           # handler 共用 response/context 工具
 ├── middleware/           # JWT 驗證、角色權限等 HTTP middleware
 ├── model/                # GORM model 與 JSON 資料結構
@@ -91,7 +91,7 @@ frontend/
 │   ├── pages/            # 依角色與功能切分的頁面
 │   │   ├── employee/     # 員工活動列表、活動詳情、個人票券
 │   │   ├── hr/           # HR 報表頁
-│   │   └── manager/      # 管理員活動管理、申請審核、現場核銷
+│   │   └── manager/      # 管理員活動管理、現場核銷
 │   ├── App.tsx           # 前端路由與主要應用組裝
 │   ├── App.css           # 應用層樣式
 │   ├── index.css         # 全域樣式與 CSS variables
@@ -139,7 +139,7 @@ npm run dev
 
 | 角色   | 員工編號 | 密碼     | 說明                                  |
 | :----- | :------- | :------- | :------------------------------------ |
-| 管理員 | MGR001   | password | 建立活動、審核申請、現場核銷          |
+| 管理員 | MGR001   | password | 建立活動、現場核銷                    |
 | 員工   | EMP001   | password | 瀏覽活動、報名、查看個人票券 (台南廠) |
 | 員工   | EMP002   | password | 瀏覽活動、報名、查看個人票券 (新竹廠) |
 | HR     | HR001    | password | 查閱各廠區/部門統計報表               |
