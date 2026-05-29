@@ -4,7 +4,7 @@ services:
     container_name: ts_postgres_ci
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ticketing_system
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ticketing_system"]
@@ -61,13 +61,13 @@ services:
         condition: service_healthy
 
     environment:
-      DATABASE_URL: host=postgres user=postgres password=postgres dbname=ticketing_system port=5432 sslmode=disable
+      DATABASE_URL: host=postgres user=postgres password=${DB_PASSWORD:-postgres} dbname=ticketing_system port=5432 sslmode=disable
       REDIS_URL: redis://redis:6379
 
       JWT_SECRET: test-secret
       PORT: 8001
       ALLOWED_ORIGINS: "*"
-
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:-password}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin

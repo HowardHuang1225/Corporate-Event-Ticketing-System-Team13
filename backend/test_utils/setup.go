@@ -87,11 +87,13 @@ func testDSN() string {
 		return dsn
 	}
 
+	dbPass := envOrDefault("DB_PASSWORD", envOrDefault("DB_PASS", "default_test_secret"))
+
 	return fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		envOrDefault("DB_HOST", "localhost"),
 		envOrDefault("DB_USER", "ts_user"),
-		envOrDefault("DB_PASSWORD", "ts_password"),
+		dbPass,
 		envOrDefault("DB_NAME", "ticketing_system"),
 		envOrDefault("DB_PORT", "5432"),
 	)
@@ -105,7 +107,9 @@ func envOrDefault(key, fallback string) string {
 }
 
 func SeedTestRole(db *gorm.DB, users []model.User, needReturn bool) ([]model.User, error) {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+	testSecret := envOrDefault("TEST_USER_PASSWORD", "fallback_seed_key_123")
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testSecret), bcrypt.DefaultCost)
 	if err != nil {
 		return []model.User{}, fmt.Errorf("failed to hash manager password: %w", err)
 	}

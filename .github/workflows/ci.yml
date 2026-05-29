@@ -64,6 +64,7 @@ jobs:
       DB_PORT: 5432
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret
+      TEST_USER_PASSWORD: password
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +81,7 @@ jobs:
         env:
           DATABASE_URL: host=127.0.0.1 user=postgres password=postgres dbname=ticketing_system port=5432 sslmode=disable
           REDIS_URL: redis://127.0.0.1:6379
+          TEST_USER_PASSWORD: password
         run: |
           cd backend
           go test -race -coverprofile=coverage.txt -covermode=atomic ./...
