@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
+import { resetAppQueryClient } from '../test/test-utils'
 
 vi.mock('../api/client', () => ({
   default: {
@@ -112,6 +113,7 @@ function configureEmployeeApi() {
 
 describe('員工票券整合流程', () => {
   beforeEach(() => {
+    resetAppQueryClient()
     localStorage.clear()
     window.history.pushState({}, '', '/events')
     vi.mocked(api.get).mockReset()
@@ -155,7 +157,9 @@ describe('員工票券整合流程', () => {
     expect(screen.getByText('未使用')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
-    expect(screen.getByText('QR-AUTO-APPROVED-001')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/QR-AUTO-APPROVED-001/)).toBeInTheDocument()
+    })
   })
 
   it('員工可在我的票券確認退票，並刷新票券與申請資料', async () => {

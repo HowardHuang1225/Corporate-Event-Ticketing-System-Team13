@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
+import { resetAppQueryClient } from '../test/test-utils'
 
 vi.mock('../api/client', () => ({
   default: {
@@ -111,6 +112,7 @@ function configureHrApi() {
 
 describe('HR 報表整合流程', () => {
   beforeEach(() => {
+    resetAppQueryClient()
     localStorage.clear()
     window.history.pushState({}, '', '/reports')
     vi.mocked(api.get).mockReset()

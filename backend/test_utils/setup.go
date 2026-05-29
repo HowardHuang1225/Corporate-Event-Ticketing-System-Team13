@@ -40,8 +40,17 @@ func OpenTestDB(t *testing.T, paramDB []any) (*gorm.DB, error) {
 		return nil, fmt.Errorf("postgres is not reachable for tests: %w", err)
 	}
 
-	if err := db.AutoMigrate(paramDB...); err != nil {
-		return nil, fmt.Errorf("failed to migrate test tables: %w", err)
+	// go test ./... runs packages in parallel; concurrent AutoMigrate can race on pg catalogs.
+	const migrationLockKey int64 = 424242
+	if err := db.Exec("SELECT pg_advisory_lock(?)", migrationLockKey).Error; err != nil {
+		return nil, fmt.Errorf("failed to acquire migration lock: %w", err)
+	}
+	migrateErr := db.AutoMigrate(paramDB...)
+	if err := db.Exec("SELECT pg_advisory_unlock(?)", migrationLockKey).Error; err != nil {
+		return nil, fmt.Errorf("failed to release migration lock: %w", err)
+	}
+	if migrateErr != nil {
+		return nil, fmt.Errorf("failed to migrate test tables: %w", migrateErr)
 	}
 
 	return db, nil

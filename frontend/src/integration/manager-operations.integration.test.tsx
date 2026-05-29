@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
+import { fillField, resetAppQueryClient } from '../test/test-utils'
 
 vi.mock('../api/client', () => ({
   default: {
@@ -114,9 +115,11 @@ function configureManagerApi() {
 }
 
 function getEventCreateFields(container: HTMLElement) {
-  const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('.modal input'))
+  const inputs = Array.from(
+    container.querySelectorAll<HTMLInputElement>('.modal input:not([type="file"])'),
+  )
   const textarea = container.querySelector<HTMLTextAreaElement>('.modal textarea')
-  if (inputs.length < 10 || !textarea) {
+  if (inputs.length < 8 || !textarea) {
     throw new Error('活動建立表單欄位沒有正確渲染')
   }
 
@@ -134,6 +137,7 @@ function getEventCreateFields(container: HTMLElement) {
 
 describe('Manager 操作整合流程', () => {
   beforeEach(() => {
+    resetAppQueryClient()
     localStorage.clear()
     window.history.pushState({}, '', '/manage/events')
     vi.mocked(api.get).mockReset()
@@ -149,18 +153,18 @@ describe('Manager 操作整合流程', () => {
     const { post } = configureManagerApi()
     const { container } = render(<App />)
 
-    expect(await screen.findByRole('button', { name: /建立新活動/ })).toBeInTheDocument()
+    await screen.findByText('可發布草稿活動')
     await userEvent.click(screen.getByRole('button', { name: /建立新活動/ }))
 
     const fields = getEventCreateFields(container)
-    await userEvent.type(fields.title, '跨頁整合活動')
-    await userEvent.type(fields.description, '用來確認 manager 整合流程')
-    await userEvent.type(fields.venue, '台北總部')
-    await userEvent.type(fields.publishTime, '2099-06-01T10:00')
-    await userEvent.type(fields.startTime, '2099-07-01T10:00')
-    await userEvent.type(fields.applyDeadline, '2099-06-20T17:00')
-    await userEvent.type(fields.endTime, '2099-07-01T18:00')
-    await userEvent.type(fields.region, '台北')
+    fillField(fields.title, '跨頁整合活動')
+    fillField(fields.description, '用來確認 manager 整合流程')
+    fillField(fields.venue, '台北總部')
+    fillField(fields.publishTime, '2099-06-01T10:00')
+    fillField(fields.startTime, '2099-07-01T10:00')
+    fillField(fields.applyDeadline, '2099-06-20T17:00')
+    fillField(fields.endTime, '2099-07-01T18:00')
+    fillField(fields.region, '台北')
     await userEvent.click(screen.getByRole('button', { name: '儲存草稿' }))
 
     await waitFor(() => {
@@ -178,7 +182,7 @@ describe('Manager 操作整合流程', () => {
     if (!tokenInput) {
       throw new Error('QR Token 欄位沒有正確渲染')
     }
-    await userEvent.type(tokenInput, '  QR-CHECKIN-001  ')
+    fillField(tokenInput, '  QR-CHECKIN-001  ')
     await userEvent.click(screen.getByRole('button', { name: '確認核銷' }))
 
     await waitFor(() => {
@@ -238,7 +242,7 @@ describe('Manager 操作整合流程', () => {
       throw new Error('QR Token 欄位沒有正確渲染')
     }
 
-    await userEvent.type(tokenInput, 'QR-CHECKED-IN')
+    fillField(tokenInput, 'QR-CHECKED-IN')
     await userEvent.click(screen.getByRole('button', { name: '確認核銷' }))
 
     await waitFor(() => {
@@ -249,7 +253,7 @@ describe('Manager 操作整合流程', () => {
     checkinErrorCode = 'NOT_FOUND'
     checkinErrorMessage = '找不到此票券'
     await userEvent.clear(tokenInput)
-    await userEvent.type(tokenInput, 'QR-NOT-FOUND')
+    fillField(tokenInput, 'QR-NOT-FOUND')
     await userEvent.click(screen.getByRole('button', { name: '確認核銷' }))
 
     await waitFor(() => {
