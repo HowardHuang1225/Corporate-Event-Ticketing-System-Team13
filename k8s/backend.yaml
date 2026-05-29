@@ -21,9 +21,10 @@ spec:
       imagePullSecrets:
         - name: ghcr-auth
 
+      automountServiceAccountToken: false
       containers:
         - name: backend
-          image: corporate-event-ticketing-system-team13-backend:latest
+          image: corporate-event-ticketing-system-team13-backend:IMAGE_TAG
           imagePullPolicy: Always
 
           ports:
@@ -181,10 +182,11 @@ spec:
             requests:
               cpu: "500m"
               memory: "512Mi"
+              ephemeral-storage: "500Mi"
             limits:
               cpu: "1"
               memory: "1Gi"
-
+              ephemeral-storage: "1Gi"
 ---
 apiVersion: v1
 kind: Service

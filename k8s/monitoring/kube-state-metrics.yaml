@@ -82,6 +82,8 @@ spec:
       labels:
         app.kubernetes.io/name: kube-state-metrics
     spec:
+      serviceAccountName: kube-state-metrics
+      automountServiceAccountToken: false
       containers:
       - image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.0
         name: kube-state-metrics
@@ -90,6 +92,16 @@ spec:
           name: http-metrics
         - containerPort: 8081
           name: telemetry
+
+        resources:
+          requests:
+            cpu: "100m"                
+            memory: "128Mi"            
+            ephemeral-storage: "100Mi" 
+          limits:
+            cpu: "200m"
+            memory: "256Mi"            
+            ephemeral-storage: "500Mi"
 ---
 apiVersion: v1
 kind: Service

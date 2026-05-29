@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: cd-${{ github.workflow }}-${{ github.ref }}
@@ -28,7 +27,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
     steps:
     - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@v3
+    - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
       id: filter
       with:
         filters: |
@@ -57,10 +56,10 @@ jobs:
         echo "image_path=$IMAGE_PATH" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3 
+      uses: docker/setup-buildx-action@b167a82ee113d7abe00c329096420362f641755a
 
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v3
+      uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -68,7 +67,7 @@ jobs:
 
     - name: Build and Push Frontend Image
       if: needs.check-changes.outputs.frontend == 'true'
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
       with:
         context: ./frontend
         file: ./frontend/Dockerfile
@@ -79,7 +78,7 @@ jobs:
 
     - name: Build and Push Backend Image
       if: needs.check-changes.outputs.backend == 'true'
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
       with:
         context: ./backend
         file: ./backend/Dockerfile
@@ -89,17 +88,21 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Set Kubernetes Context
-      uses: azure/k8s-set-context@v3
+      uses: azure/k8s-set-context@82818d0af9ab27740b8a4f9188d3e918c5ff9b6d
       with:
         method: kubeconfig
         kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
 
+
     - name: Deploy and Inject Images to AKS
+      env:
+        KUBECONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
       run: |
         kubectl create secret docker-registry ghcr-auth \
           --docker-server=ghcr.io \
           --docker-username=${{ github.actor }} \
-          --docker-password=${{ secrets.GHCR_PAT }} \
+          --docker-password="$GHCR_TOKEN" \
           --docker-email=team13@nthu.edu.tw \
           --dry-run=client -o yaml | kubectl apply -f -
 

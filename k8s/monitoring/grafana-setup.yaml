@@ -28,6 +28,7 @@ spec:
     spec:
       securityContext:
         fsGroup: 472
+      automountServiceAccountToken: false
       containers:
       - name: grafana
         image: grafana/grafana:10.4.1
@@ -37,8 +38,10 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+            ephemeral-storage: "256Mi"
           requests:
             memory: "256Mi"
+            ephemeral-storage: "1Gi"
             cpu: "200m"
         volumeMounts:
         - mountPath: /var/lib/grafana

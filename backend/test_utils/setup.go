@@ -40,8 +40,17 @@ func OpenTestDB(t *testing.T, paramDB []any) (*gorm.DB, error) {
 		return nil, fmt.Errorf("postgres is not reachable for tests: %w", err)
 	}
 
-	if err := db.AutoMigrate(paramDB...); err != nil {
-		return nil, fmt.Errorf("failed to migrate test tables: %w", err)
+	// go test ./... runs packages in parallel; concurrent AutoMigrate can race on pg catalogs.
+	const migrationLockKey int64 = 424242
+	if err := db.Exec("SELECT pg_advisory_lock(?)", migrationLockKey).Error; err != nil {
+		return nil, fmt.Errorf("failed to acquire migration lock: %w", err)
+	}
+	migrateErr := db.AutoMigrate(paramDB...)
+	if err := db.Exec("SELECT pg_advisory_unlock(?)", migrationLockKey).Error; err != nil {
+		return nil, fmt.Errorf("failed to release migration lock: %w", err)
+	}
+	if migrateErr != nil {
+		return nil, fmt.Errorf("failed to migrate test tables: %w", migrateErr)
 	}
 
 	return db, nil
@@ -78,11 +87,13 @@ func testDSN() string {
 		return dsn
 	}
 
+	dbPass := envOrDefault("DB_PASSWORD", envOrDefault("DB_PASS", "default_test_secret"))
+
 	return fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		envOrDefault("DB_HOST", "localhost"),
 		envOrDefault("DB_USER", "ts_user"),
-		envOrDefault("DB_PASSWORD", "ts_password"),
+		dbPass,
 		envOrDefault("DB_NAME", "ticketing_system"),
 		envOrDefault("DB_PORT", "5432"),
 	)
@@ -96,7 +107,9 @@ func envOrDefault(key, fallback string) string {
 }
 
 func SeedTestRole(db *gorm.DB, users []model.User, needReturn bool) ([]model.User, error) {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+	testSecret := envOrDefault("TEST_USER_PASSWORD", "fallback_seed_key_123")
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(testSecret), bcrypt.DefaultCost)
 	if err != nil {
 		return []model.User{}, fmt.Errorf("failed to hash manager password: %w", err)
 	}

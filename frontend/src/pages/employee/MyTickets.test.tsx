@@ -89,7 +89,9 @@ describe('MyTickets', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
 
-    expect(screen.getByText('QR-TOKEN-123456')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/QR-TOKEN-123456/)).toBeInTheDocument()
+    })
     expect(screen.getByRole('button', { name: '收起 QR' })).toBeInTheDocument()
   })
 

@@ -2,6 +2,10 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 
+vi.mock('../utils/totp', () => ({
+  generateTOTP: vi.fn().mockResolvedValue('123456'),
+}))
+
 beforeEach(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
