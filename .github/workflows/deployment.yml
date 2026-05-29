@@ -56,10 +56,10 @@ jobs:
         echo "image_path=$IMAGE_PATH" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@b167a82ee113d7abe00c329096420362f641755a
+      uses: docker/setup-buildx-action@1f1b6c392c624d9a3ca038aacd710ebbf7976ca8
 
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+      uses: docker/login-action@d66d3a395860a4f949fac3766acd41dbf1f71ab5
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -67,7 +67,7 @@ jobs:
 
     - name: Build and Push Frontend Image
       if: needs.check-changes.outputs.frontend == 'true'
-      uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
+      uses: docker/build-push-action@20ae4782b87368a12cc0f6689b41c7b08b8a94dd
       with:
         context: ./frontend
         file: ./frontend/Dockerfile
@@ -78,7 +78,7 @@ jobs:
 
     - name: Build and Push Backend Image
       if: needs.check-changes.outputs.backend == 'true'
-      uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
+      uses: docker/build-push-action@20ae4782b87368a12cc0f6689b41c7b08b8a94dd
       with:
         context: ./backend
         file: ./backend/Dockerfile
@@ -88,7 +88,7 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Set Kubernetes Context
-      uses: azure/k8s-set-context@82818d0af9ab27740b8a4f9188d3e918c5ff9b6d
+      uses: azure/k8s-set-context@810c4828964670ccf8add9cca2d0768c9d1f7d41
       with:
         method: kubeconfig
         kubeconfig: ${{ secrets.KUBE_CONFIG_DATA }}
