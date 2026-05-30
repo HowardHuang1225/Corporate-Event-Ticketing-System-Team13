@@ -127,7 +127,7 @@ describe('HR 報表整合流程', () => {
 
     expect(await screen.findByRole('heading', { name: '統計報表' })).toBeInTheDocument()
     expect(await screen.findByText('活動列表')).toBeInTheDocument()
-    expect(screen.getAllByText('年度家庭日').length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('年度家庭日')).length).toBeGreaterThan(0)
 
     await userEvent.selectOptions(screen.getByRole('combobox'), 'event-report-1')
 
@@ -143,6 +143,6 @@ describe('HR 報表整合流程', () => {
     await userEvent.click(screen.getByRole('link', { name: /活動列表/ }))
 
     expect(await screen.findByText('瀏覽所有可參加的福委會活動')).toBeInTheDocument()
-    expect(screen.getAllByText('年度家庭日').length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('年度家庭日')).length).toBeGreaterThan(0)
   })
 })
