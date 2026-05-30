@@ -232,10 +232,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm ci --ignore-scripts
 
       - name: Install Playwright browsers
-        run: cd frontend && npx playwright install --with-deps
+        run: cd frontend && ./node_modules/.bin/playwright install --with-deps
 
       - name: Build services
         run: docker compose -f docker-compose.ci.yml build
