@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,8 +8,114 @@ import { v4 as uuidv4 } from 'uuid'
 import api from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 
+type EventStatus = 'draft' | 'published' | 'closed' | 'ended'
+
+type TicketType = {
+  id: string
+  name: string
+  remaining: number
+  total_quota: number
+}
+
+type EventDetailData = {
+  id: string
+  title: string
+  description: string
+  venue: string
+  status: EventStatus
+  start_time: string
+  end_time: string
+  apply_deadline: string
+  region_restriction?: string
+  max_tickets_per_person?: number
+  image_url?: string
+  document_url?: string
+  ticket_types?: TicketType[]
+}
+
+type ApplyPayload = {
+  event_id: string | undefined
+  ticket_type_id: string
+  quantity: number
+  idempotency_key: string
+}
+
+type ApplyResponse = {
+  data?: {
+    status?: string
+  }
+}
+
+type ApiErrorResponse = {
+  error?: {
+    message?: string
+  }
+}
+
+const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
+  draft: '草稿',
+  published: '發布中',
+  closed: '已截止',
+  ended: '已結束',
+}
+
+const REGION_KEYWORD_GROUPS = [
+  ['tainan', '台南'],
+  ['hsinchu', '新竹'],
+]
+
 function fmt(d: string) {
   return new Date(d).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function isEventStatus(status: string): status is EventStatus {
+  return status in EVENT_STATUS_LABELS
+}
+
+function getEventStatusLabel(status: string) {
+  return isEventStatus(status) ? EVENT_STATUS_LABELS[status] : EVENT_STATUS_LABELS.closed
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError<ApiErrorResponse>(error)) {
+    return error.response?.data?.error?.message ?? fallback
+  }
+
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    return (error as { response?: { data?: ApiErrorResponse } }).response?.data?.error?.message ?? fallback
+  }
+
+  return fallback
+}
+
+function isSameKnownRegion(userRegion: string, eventRegion: string) {
+  return REGION_KEYWORD_GROUPS.some(keywords => (
+    keywords.some(keyword => userRegion.includes(keyword))
+      && keywords.some(keyword => eventRegion.includes(keyword))
+  ))
+}
+
+function hasRegionMismatch(eventRegion?: string, userRegion?: string) {
+  if (!eventRegion || !userRegion) {
+    return false
+  }
+
+  const normalizedEventRegion = eventRegion.toLowerCase()
+  const normalizedUserRegion = userRegion.toLowerCase()
+
+  if (normalizedUserRegion.includes(normalizedEventRegion) || normalizedEventRegion.includes(normalizedUserRegion)) {
+    return false
+  }
+
+  return !isSameKnownRegion(normalizedUserRegion, normalizedEventRegion)
+}
+
+function getUnavailableApplyMessage(status: EventStatus) {
+  if (status !== 'published') {
+    return '此活動目前不開放申請'
+  }
+
+  return '申請截止時間已過'
 }
 
 export default function EventDetail() {
@@ -21,33 +128,56 @@ export default function EventDetail() {
   const [showImagePreview, setShowImagePreview] = useState(false)
   const [selectedType, setSelectedType] = useState('')
   const [quantity, setQuantity] = useState(1)
+  const [isPosterHovered, setIsPosterHovered] = useState(false)
+  const [isPreviewCloseHovered, setIsPreviewCloseHovered] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['event', id],
-    queryFn: () => api.get(`/events/${id}`).then(r => r.data.data),
+    queryFn: () => api.get<{ data: EventDetailData | null }>(`/events/${id}`).then(r => r.data.data),
     refetchInterval: 10000, // 每 10 秒自動重新抓取一次
   })
 
   const applyMutation = useMutation({
-    mutationFn: (payload: any) => api.post('/applications', payload),
+    mutationFn: (payload: ApplyPayload) => api.post<ApplyResponse>('/applications', payload),
     onSuccess: (res) => {
       if (res.status === 202 || res.data?.data?.status === 'queued') {
         toast.success('已進入排隊，系統會依序處理申請')
       } else {
         toast.success('搶票成功！已為您自動發票')
       }
-      setShowModal(false)
+      closeApplyModal()
       qc.invalidateQueries({ queryKey: ['event', id] })
       qc.invalidateQueries({ queryKey: ['my-applications'] })
       qc.invalidateQueries({ queryKey: ['my-tickets'] })
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error?.message ?? '申請失敗')
+    onError: error => {
+      toast.error(getApiErrorMessage(error, '申請失敗'))
     },
   })
 
+  const closeApplyModal = () => {
+    setShowModal(false)
+  }
+
+  const closeImagePreview = () => {
+    setShowImagePreview(false)
+  }
+
+  const openImagePreview = () => {
+    setShowImagePreview(true)
+  }
+
+  const openApplyModal = (ticketTypeId: string) => {
+    setSelectedType(ticketTypeId)
+    setShowModal(true)
+    setQuantity(1)
+  }
+
   const handleApply = () => {
-    if (!selectedType) { toast.error('請選擇票種'); return }
+    if (!selectedType) {
+      toast.error('請選擇票種')
+      return
+    }
     applyMutation.mutate({
       event_id: id,
       ticket_type_id: selectedType,
@@ -62,22 +192,9 @@ export default function EventDetail() {
   const event = data
   const canApply = user?.role === 'employee' && event.status === 'published' && new Date(event.apply_deadline) > new Date()
   const maxQ = event.max_tickets_per_person ?? 1
-  const selectedTT = (event.ticket_types ?? []).find((tt: any) => tt.id === selectedType)
-  const isRegionMismatch = (() => {
-    if (!event.region_restriction || !user || !user.region) return false
-    const eventReg = event.region_restriction.toLowerCase()
-    const userReg = user.region.toLowerCase()
-    if (userReg.includes(eventReg) || eventReg.includes(userReg)) return false
-    const tainanKeywords = ['tainan', '台南']
-    const hsinchuKeywords = ['hsinchu', '新竹']
-    const isUserTainan = tainanKeywords.some(k => userReg.includes(k))
-    const isEventTainan = tainanKeywords.some(k => eventReg.includes(k))
-    if (isUserTainan && isEventTainan) return false
-    const isUserHsinchu = hsinchuKeywords.some(k => userReg.includes(k))
-    const isEventHsinchu = hsinchuKeywords.some(k => eventReg.includes(k))
-    if (isUserHsinchu && isEventHsinchu) return false
-    return true
-  })()
+  const selectedTT = (event.ticket_types ?? []).find(tt => tt.id === selectedType)
+  const isRegionMismatch = hasRegionMismatch(event.region_restriction, user?.region)
+  const unavailableApplyMessage = getUnavailableApplyMessage(event.status)
 
   return (
     <div>
@@ -88,19 +205,22 @@ export default function EventDetail() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>{event.title}</h1>
-          <span className={`badge badge-${event.status}`}>{event.status === 'published' ? '發布中' : event.status === 'draft' ? '草稿' : event.status === 'ended' ? '已結束' : '已截止'}</span>
+          <span className={`badge badge-${event.status}`}>{getEventStatusLabel(event.status)}</span>
         </div>
         <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 20 }}>{event.description}</p>
 
         {event.image_url && (
           <div style={{ marginBottom: 20 }}>
-            <div 
-              style={{ display: 'inline-block', position: 'relative', cursor: 'pointer', maxWidth: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}
-              onClick={() => setShowImagePreview(true)}
+            <button
+              type="button"
+              style={{ display: 'inline-block', position: 'relative', cursor: 'pointer', maxWidth: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'transparent', padding: 0 }}
+              onClick={openImagePreview}
+              onMouseEnter={() => setIsPosterHovered(true)}
+              onMouseLeave={() => setIsPosterHovered(false)}
               title="點擊放大預覽"
             >
-              <img src={event.image_url} alt="活動海報" style={{ display: 'block', maxWidth: '100%', maxHeight: 400, transition: 'transform 0.3s ease' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
-            </div>
+              <img src={event.image_url} alt="活動海報" style={{ display: 'block', maxWidth: '100%', maxHeight: 400, transition: 'transform 0.3s ease', transform: isPosterHovered ? 'scale(1.05)' : 'scale(1)' }} />
+            </button>
           </div>
         )}
         {event.document_url && (
@@ -152,7 +272,7 @@ export default function EventDetail() {
       <div className="card">
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>可選票種</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {(event.ticket_types ?? []).map((tt: any) => (
+          {(event.ticket_types ?? []).map(tt => (
             <div key={tt.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid var(--border)' }}>
               <div>
                 <div style={{ fontWeight: 500 }}>{tt.name}</div>
@@ -161,7 +281,7 @@ export default function EventDetail() {
                 </div>
               </div>
               {canApply && tt.remaining > 0 && (
-                <button className="btn btn-primary btn-sm" onClick={() => { setSelectedType(tt.id); setShowModal(true); setQuantity(1) }}>
+                <button className="btn btn-primary btn-sm" onClick={() => openApplyModal(tt.id)}>
                   申請
                 </button>
               )}
@@ -171,17 +291,23 @@ export default function EventDetail() {
         </div>
         {!canApply && user?.role === 'employee' && (
           <p style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
-            {event.status !== 'published' ? '此活動目前不開放申請' : '申請截止時間已過'}
+            {unavailableApplyMessage}
           </p>
         )}
       </div>
 
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal">
+        <div className="modal-overlay">
+          <button
+            type="button"
+            aria-label="關閉申請票券視窗"
+            onClick={closeApplyModal}
+            style={{ position: 'absolute', inset: 0, border: 0, background: 'transparent', padding: 0 }}
+          />
+          <div className="modal" style={{ position: 'relative', zIndex: 1 }}>
             <div className="modal-header">
               <span className="modal-title">申請票券</span>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+              <button className="modal-close" onClick={closeApplyModal}>✕</button>
             </div>
             <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>{event.title}</p>
             {isRegionMismatch && (
@@ -198,14 +324,15 @@ export default function EventDetail() {
               </div>
             )}
             <div className="form-group">
-              <label className="form-label">票種</label>
+              <div className="form-label">票種</div>
               <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid var(--border)' }}>
                 {selectedTT?.name ?? '—'}（剩餘 {selectedTT?.remaining} 張）
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">數量（最多 {maxQ} 張）</label>
+              <label className="form-label" htmlFor="ticket-quantity">數量（最多 {maxQ} 張）</label>
               <input
+                id="ticket-quantity"
                 type="number" min={1} max={Math.min(maxQ, selectedTT?.remaining ?? 1)}
                 value={quantity}
                 onChange={e => setQuantity(Number(e.target.value))}
@@ -213,7 +340,7 @@ export default function EventDetail() {
               />
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>取消</button>
+              <button className="btn btn-secondary" onClick={closeApplyModal}>取消</button>
               <button className="btn btn-primary" onClick={handleApply} disabled={applyMutation.isPending}>
                 {applyMutation.isPending ? '送出中…' : '確認申請'}
               </button>
@@ -223,16 +350,26 @@ export default function EventDetail() {
       )}
 
       {showImagePreview && event.image_url && (
-        <div className="modal-overlay" onClick={() => setShowImagePreview(false)} style={{ zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div className="modal-overlay" style={{ zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <button
-            onClick={() => setShowImagePreview(false)}
-            style={{ position: 'absolute', top: 24, right: 24, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', width: 48, height: 48, borderRadius: '50%', zIndex: 10, display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'background 0.2s' }}
-            onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.8)'}
-            onMouseOut={e => e.currentTarget.style.background = 'rgba(0,0,0,0.6)'}
+            type="button"
+            aria-label="關閉活動海報預覽"
+            onClick={closeImagePreview}
+            style={{ position: 'absolute', inset: 0, border: 0, background: 'transparent', padding: 0 }}
+          />
+          <button
+            type="button"
+            aria-label="關閉活動海報預覽"
+            onClick={closeImagePreview}
+            onMouseEnter={() => setIsPreviewCloseHovered(true)}
+            onMouseLeave={() => setIsPreviewCloseHovered(false)}
+            style={{ position: 'absolute', top: 24, right: 24, background: isPreviewCloseHovered ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', width: 48, height: 48, borderRadius: '50%', zIndex: 10, display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'background 0.2s' }}
           >
             ✕
           </button>
-          <img src={event.image_url} alt="活動海報預覽" style={{ width: '90vw', height: '90vh', objectFit: 'contain' }} />
+          <button type="button" onClick={closeImagePreview} style={{ position: 'relative', zIndex: 1, border: 0, background: 'transparent', padding: 0 }}>
+            <img src={event.image_url} alt="活動海報預覽" style={{ width: '90vw', height: '90vh', objectFit: 'contain' }} />
+          </button>
         </div>
       )}
     </div>
