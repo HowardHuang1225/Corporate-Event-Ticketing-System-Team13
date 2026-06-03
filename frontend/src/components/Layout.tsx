@@ -1,14 +1,13 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  CalendarDays, Ticket, CheckSquare, BarChart3, Settings, LogOut, ClipboardList,
+  CalendarDays, Ticket, CheckSquare, BarChart3, Settings, LogOut,
 } from 'lucide-react'
 
 function getNav(role?: string) {
   if (role === 'event_manager') return [
     { to: '/events', label: '活動列表', icon: <CalendarDays className="nav-icon" /> },
     { to: '/manage/events', label: '活動管理', icon: <Settings className="nav-icon" /> },
-    { to: '/applications', label: '申請審核', icon: <ClipboardList className="nav-icon" /> },
     { to: '/checkin', label: '現場核銷', icon: <CheckSquare className="nav-icon" /> },
   ]
   if (role === 'hr') return [

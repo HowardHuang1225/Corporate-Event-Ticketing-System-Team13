@@ -27,7 +27,6 @@ frontend/
 │   │   │   └── Reports.tsx # 視覺化統計報表 (部門、廠區分佈、CSV 匯出)
 │   │   ├── manager/    # 管理員專用
 │   │   │   ├── EventManage.tsx # 活動維護 (含時間格式 ISO 轉換、圖片/PDF 上傳)
-│   │   │   ├── Applications.tsx # Legacy 申請審核頁，目前員工申請已自動核准
 │   │   │   └── CheckIn.tsx      # 現場掃描核銷 (顯示詳細員工廠區資訊)
 │   │   └── employee/   # 一般員工專用
 │   │       └── MyTickets.tsx    # 我的票券 (QR Code 生成)
