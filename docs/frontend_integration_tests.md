@@ -92,7 +92,7 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 | Functions | 83.15% |
 | Lines | 88.21% |
 
-`Applications.tsx` 仍存在於前端實作並會被 coverage 計入，但因為員工申請已改為自動核准，目前不再為 manager 審核流程補測試。
+因為員工申請已改為自動核准，legacy `Applications.tsx` 申請審核頁已移除，coverage 不再計入 manager 審核流程。
 
 ## 後續建議補測
 

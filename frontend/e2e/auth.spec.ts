@@ -66,7 +66,6 @@ test.describe('登入與權限 e2e', () => {
 
     await test.step('確認 manager 導覽具備管理功能且沒有員工票券入口', async () => {
       await expect(page.getByRole('link', { name: /活動管理/ })).toBeVisible()
-      await expect(page.getByRole('link', { name: /申請審核/ })).toBeVisible()
       await expect(page.getByRole('link', { name: /現場核銷/ })).toBeVisible()
       await expect(page.getByRole('link', { name: /我的票券/ })).toHaveCount(0)
     })

@@ -38,7 +38,7 @@ npm run build
 | Functions | 83.15% |
 | Lines | 88.21% |
 
-目前員工申請不需要 manager 核准，因此已刪除 `Applications.test.tsx` 中的 approve/reject 測試。`Applications.tsx` 仍存在於前端實作並會被 coverage 計入，但測試不再驗證 manager 審核流程。
+目前員工申請不需要 manager 核准，因此已移除 legacy `Applications.tsx` 申請審核頁與原先的 approve/reject 測試，coverage 不再計入 manager 審核流程。
 
 ## Unit Tests
 

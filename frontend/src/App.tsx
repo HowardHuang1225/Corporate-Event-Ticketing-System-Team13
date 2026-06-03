@@ -9,7 +9,6 @@ import EventList from './pages/employee/EventList'
 import EventDetail from './pages/employee/EventDetail'
 import MyTickets from './pages/employee/MyTickets'
 import EventManage from './pages/manager/EventManage'
-import Applications from './pages/manager/Applications'
 import CheckIn from './pages/manager/CheckIn'
 import Reports from './pages/hr/Reports'
 import { appQueryClient } from './lib/queryClient'
@@ -36,7 +35,6 @@ export default function App() {
                 <Route path="events/:id" element={<EventDetail />} />
                 <Route path="my-tickets" element={<MyTickets />} />
                 <Route path="manage/events" element={<EventManage />} />
-                <Route path="applications" element={<Applications />} />
                 <Route path="checkin" element={<CheckIn />} />
                 <Route path="reports" element={<Reports />} />
               </Route>
