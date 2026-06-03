@@ -24,6 +24,7 @@ data:
                         '"$http_user_agent" "$http_x_forwarded_for"';
 
         access_log /var/log/nginx/access_log.log main;
+        client_max_body_size 5m;
 
         sendfile on;
         tcp_nopush on;

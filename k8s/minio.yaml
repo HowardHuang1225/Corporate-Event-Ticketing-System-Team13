@@ -8,7 +8,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: managed-premium   
+  storageClassName: default
 
 ---
 # ==========================================
@@ -135,8 +135,8 @@ spec:
                 sleep 3
               done
 
-              mc mb local/pdfs || true
-              mc policy set public local/pdfs || true
+              mc mb local/ticketing-attachments || true
+              mc anonymous set download local/ticketing-attachments || true
 
           resources:
             requests:
