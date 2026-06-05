@@ -31,25 +31,33 @@ const ticketFixture = {
   },
 }
 
-function renderCheckIn() {
+const checkinFixture = {
+  id: 'checkin-1',
+  checked_at: '2099-07-01T02:00:00.000Z',
+  ticket: {
+    event: { title: '年度家庭日' },
+    ticket_type: { name: '一般票' },
+    qr_token: 'QR-TOKEN-123456',
+  },
+}
+
+function renderCheckIn({
+  events = [eventFixture],
+  filteredCheckins = [checkinFixture],
+  defaultCheckins = [],
+}: {
+  events?: any[]
+  filteredCheckins?: any[]
+  defaultCheckins?: any[]
+} = {}) {
   apiGet.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
-    if (url === '/events') return Promise.resolve({ data: { data: [eventFixture] } })
+    if (url === '/events') return Promise.resolve({ data: { data: events } })
     if (url === '/checkins') {
       return Promise.resolve({
         data: {
           data: config?.params?.event_id
-            ? [
-                {
-                  id: 'checkin-1',
-                  checked_at: '2099-07-01T02:00:00.000Z',
-                  ticket: {
-                    event: { title: '年度家庭日' },
-                    ticket_type: { name: '一般票' },
-                    qr_token: 'QR-TOKEN-123456',
-                  },
-                },
-              ]
-            : [],
+            ? filteredCheckins
+            : defaultCheckins,
         },
       })
     }
@@ -82,6 +90,34 @@ describe('CheckIn', () => {
     expect(await screen.findByText(/核銷成功/)).toBeInTheDocument()
     expect(screen.getByText(/王小明/)).toBeInTheDocument()
     expect(tokenInput).toHaveValue('')
+    await waitFor(() => {
+      expect(apiGet.mock.calls.filter(call => call[0] === '/checkins').length).toBeGreaterThan(1)
+    })
+  })
+
+  it('核銷成功但票券關聯資料缺漏時會顯示 fallback', async () => {
+    console.info('確認核銷成功結果 fallback 資料')
+    apiPost.mockResolvedValue({
+      data: {
+        data: {
+          ticket: {
+            event: null,
+            ticket_type: null,
+            user: {},
+          },
+        },
+      },
+    })
+    const { container } = renderCheckIn()
+
+    const tokenInput = container.querySelector<HTMLInputElement>('#qr-token-input')
+    if (!tokenInput) throw new Error('QR token 欄位沒有正確渲染')
+
+    await userEvent.type(tokenInput, 'QR-TOKEN-MISSING-RELATIONS')
+    await userEvent.click(screen.getByRole('button', { name: '確認核銷' }))
+
+    expect(await screen.findByText(/核銷成功！ -/)).toBeInTheDocument()
+    expect(screen.getByText('— (—)')).toBeInTheDocument()
   })
 
   it('空白 token 時不會送出核銷 API', async () => {
@@ -166,6 +202,20 @@ describe('CheckIn', () => {
     expect(await screen.findByText('❌ 核銷服務暫時不可用')).toBeInTheDocument()
   })
 
+  it('核銷錯誤缺少後端訊息時會顯示預設失敗文案', async () => {
+    console.info('確認核銷錯誤 fallback 訊息')
+    apiPost.mockRejectedValue({})
+    const { container } = renderCheckIn()
+
+    const tokenInput = container.querySelector<HTMLInputElement>('#qr-token-input')
+    if (!tokenInput) throw new Error('QR token 欄位沒有正確渲染')
+
+    await userEvent.type(tokenInput, 'QR-TOKEN-ERROR')
+    await userEvent.click(screen.getByRole('button', { name: '確認核銷' }))
+
+    expect(await screen.findByText('❌ 核銷失敗')).toBeInTheDocument()
+  })
+
   it('切換活動篩選會用 event_id 重新查詢核銷紀錄', async () => {
     console.info('確認核銷紀錄活動篩選參數')
     renderCheckIn()
@@ -178,5 +228,51 @@ describe('CheckIn', () => {
       expect(apiGet).toHaveBeenCalledWith('/checkins', { params: { event_id: 'event-1' } })
     })
     expect(await screen.findByText('年度家庭日')).toBeInTheDocument()
+  })
+
+  it('沒有活動與核銷紀錄時會顯示空狀態', async () => {
+    console.info('確認核銷紀錄空狀態與活動清單空資料')
+    renderCheckIn({ events: [], defaultCheckins: [] })
+
+    expect(await screen.findByText('尚無核銷記錄')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '所有活動' })).toBeInTheDocument()
+  })
+
+  it('核銷紀錄缺少關聯資料時會顯示 fallback', async () => {
+    console.info('確認核銷紀錄 fallback 顯示')
+    renderCheckIn({
+      defaultCheckins: [
+        {
+          id: 'checkin-fallback',
+          checked_at: '2099-07-02T02:00:00.000Z',
+          ticket: {},
+        },
+      ],
+    })
+
+    expect(await screen.findByText('活動')).toBeInTheDocument()
+    expect(screen.getByText(/Token: —/)).toBeInTheDocument()
+  })
+
+  it('可以開啟相機掃描 modal，遇到相機錯誤時顯示錯誤並可關閉', async () => {
+    console.info('確認相機掃描錯誤與關閉流程')
+    vi.stubGlobal('jsQR', vi.fn())
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(new Error('相機權限被拒絕')),
+      },
+    })
+
+    renderCheckIn()
+
+    await userEvent.click(screen.getByTitle('開啟相機掃描'))
+
+    expect(await screen.findByText('相機掃描 QR Code')).toBeInTheDocument()
+    expect(await screen.findByText(/相機權限被拒絕/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '' }))
+    await waitFor(() => {
+      expect(screen.queryByText('相機掃描 QR Code')).not.toBeInTheDocument()
+    })
   })
 })
