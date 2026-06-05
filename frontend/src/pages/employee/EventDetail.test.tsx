@@ -250,4 +250,51 @@ describe('EventDetail', () => {
     expect(await screen.findByText('年度家庭日')).toBeInTheDocument()
     expect(screen.queryByText(/地域提醒/)).not.toBeInTheDocument()
   })
+
+  it('有海報與附件時可以開啟與關閉圖片預覽', async () => {
+    console.info('確認活動詳情海報預覽與附件連結分支')
+    renderEventDetail({
+      ...publishedEvent,
+      image_url: 'https://cdn.example.com/poster.png',
+      document_url: 'https://cdn.example.com/info.pdf',
+    })
+
+    expect(await screen.findByText('年度家庭日')).toBeInTheDocument()
+    const poster = screen.getByRole('img', { name: '活動海報' })
+    expect(poster).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /檢視活動附件/ })).toHaveAttribute('href', 'https://cdn.example.com/info.pdf')
+
+    await userEvent.hover(poster.closest('button')!)
+    await userEvent.click(poster)
+    expect(screen.getByRole('img', { name: '活動海報預覽' })).toBeInTheDocument()
+
+    const closeButtons = screen.getAllByRole('button', { name: '關閉活動海報預覽' })
+    await userEvent.hover(closeButtons[1])
+    await userEvent.unhover(closeButtons[1])
+    await userEvent.click(closeButtons[1])
+    expect(screen.queryByRole('img', { name: '活動海報預覽' })).not.toBeInTheDocument()
+  })
+
+  it('沒有地域、沒有上限與一般錯誤時使用 fallback 文案', async () => {
+    console.info('確認活動詳情 fallback 條件分支')
+    renderEventDetail({
+      ...publishedEvent,
+      region_restriction: undefined,
+      max_tickets_per_person: undefined,
+    })
+    apiPost.mockRejectedValue(new Error('plain error'))
+
+    expect(await screen.findByText('年度家庭日')).toBeInTheDocument()
+    expect(screen.getByText('不限制')).toBeInTheDocument()
+    expect(screen.queryByText(/地域提醒/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '申請' }))
+    expect(screen.getByLabelText(/數量（最多 1 張）/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '確認申請' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith('申請失敗')
+    })
+  })
+
 })

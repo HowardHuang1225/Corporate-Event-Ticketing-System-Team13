@@ -261,4 +261,24 @@ describe('Applications', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('共 1 筆')).toBeInTheDocument()
   })
+
+  it('員工資料缺少部分欄位時仍可顯示列表 fallback', async () => {
+    console.info('確認申請列表員工欄位缺漏分支')
+    renderApplications({
+      applications: [
+        {
+          ...pendingApplication,
+          id: 'app-partial-user',
+          user: {
+            name: '資料不完整員工',
+          },
+        },
+      ],
+    })
+
+    expect(await screen.findByText('資料不完整員工')).toBeInTheDocument()
+    expect(screen.getByText('資料不完整員工').closest('tr')).toHaveTextContent('待審核')
+    expect(screen.getByText('共 1 筆')).toBeInTheDocument()
+  })
+
 })

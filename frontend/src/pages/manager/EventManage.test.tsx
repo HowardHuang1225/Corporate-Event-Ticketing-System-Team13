@@ -352,4 +352,89 @@ describe('EventManage', () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('建立失敗'))
   })
+
+  it('可以上傳圖片與 PDF，成功後回填預覽與附件狀態', async () => {
+    console.info('確認活動表單檔案上傳成功分支')
+    renderEventManage([])
+    apiPost.mockImplementation((url: string) => {
+      if (url === '/upload') {
+        return Promise.resolve({ data: { data: { url: 'https://cdn.example.com/uploaded-file' } } })
+      }
+      return Promise.resolve({ data: { data: {} } })
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: /建立新活動/ }))
+    const imageInput = screen.getByLabelText('活動圖片')
+    const docInput = screen.getByLabelText('活動文件 (僅限 PDF)')
+
+    await userEvent.upload(imageInput, new File(['image'], 'cover.png', { type: 'image/png' }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('圖片上傳成功！'))
+    expect(await screen.findByText('圖片已上傳成功')).toBeInTheDocument()
+
+    await userEvent.upload(docInput, new File(['pdf'], 'guide.pdf', { type: 'application/pdf' }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('附件上傳成功！'))
+    expect(await screen.findByText('📄 PDF 附件已上傳成功')).toBeInTheDocument()
+    expect(apiPost).toHaveBeenCalledWith('/upload', expect.any(FormData), { headers: { 'Content-Type': 'multipart/form-data' } })
+  })
+
+  it('上傳檔案會拒絕過大檔案、錯誤型別並顯示 API 錯誤訊息', async () => {
+    console.info('確認活動表單檔案上傳錯誤分支')
+    renderEventManage([])
+
+    await userEvent.click(await screen.findByRole('button', { name: /建立新活動/ }))
+    const imageInput = screen.getByLabelText('活動圖片')
+    const docInput = screen.getByLabelText('活動文件 (僅限 PDF)')
+
+    const largeImage = new File(['x'], 'large.png', { type: 'image/png' })
+    Object.defineProperty(largeImage, 'size', { value: 6 * 1024 * 1024 })
+    await userEvent.upload(imageInput, largeImage)
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('檔案大小不能超過 5MB'))
+
+    toastError.mockClear()
+    await userEvent.upload(imageInput, new File(['text'], 'note.txt', { type: 'text/plain' }), { applyAccept: false })
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('請上傳圖片檔案'))
+
+    toastError.mockClear()
+    await userEvent.upload(docInput, new File(['image'], 'cover.png', { type: 'image/png' }), { applyAccept: false })
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('請上傳 PDF 檔案'))
+
+    toastError.mockClear()
+    apiPost.mockRejectedValueOnce({ response: { data: { error: { message: 'Storage 暫時不可用' } } } })
+    await userEvent.upload(docInput, new File(['pdf'], 'guide.pdf', { type: 'application/pdf' }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Storage 暫時不可用'))
+  })
+
+  it('建立活動 modal 可以用取消與 overlay 關閉', async () => {
+    console.info('確認活動表單關閉分支')
+    renderEventManage([])
+
+    await userEvent.click(await screen.findByRole('button', { name: /建立新活動/ }))
+    expect(screen.getAllByText('建立新活動')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.getAllByText('建立新活動')).toHaveLength(1)
+
+    await userEvent.click(screen.getByRole('button', { name: /建立新活動/ }))
+    await userEvent.click(screen.getByRole('button', { name: '關閉活動表單' }))
+    expect(screen.getAllByText('建立新活動')).toHaveLength(1)
+  })
+
+  it('更新、發布、刪除失敗時會顯示 fallback 或後端錯誤訊息', async () => {
+    console.info('確認活動管理 mutation 錯誤分支')
+    renderEventManage([draftEvent])
+
+    apiPut.mockRejectedValueOnce({ response: { data: { error: { message: '更新資料不合法' } } } })
+    await screen.findByText('年度家庭日草稿')
+    await userEvent.click(screen.getByRole('button', { name: /編輯/ }))
+    await userEvent.click(screen.getByRole('button', { name: '儲存草稿' }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('更新資料不合法'))
+
+    apiPatch.mockRejectedValueOnce(new Error('plain publish error'))
+    await userEvent.click(screen.getByRole('button', { name: /發布/ }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('發布失敗'))
+
+    apiDelete.mockRejectedValueOnce({ response: { data: { error: { message: '草稿不可刪除' } } } })
+    await userEvent.click(screen.getByRole('button', { name: /刪除/ }))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('草稿不可刪除'))
+  })
+
 })
