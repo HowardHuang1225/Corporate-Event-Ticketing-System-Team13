@@ -140,4 +140,22 @@ describe('EventList', () => {
 
     expect(await screen.findByText('archived')).toBeInTheDocument()
   })
+
+  it('沒有地域限制與票種資料時仍可顯示活動卡片', async () => {
+    console.info('確認活動列表可選欄位缺漏分支')
+    renderEventList({
+      events: [
+        {
+          ...eventFixture,
+          region_restriction: undefined,
+          ticket_types: undefined,
+        },
+      ],
+    })
+
+    expect(await screen.findByText('年度家庭日')).toBeInTheDocument()
+    expect(screen.queryByText('台南')).not.toBeInTheDocument()
+    expect(screen.getByText(/共 1 個活動/)).toBeInTheDocument()
+  })
+
 })
