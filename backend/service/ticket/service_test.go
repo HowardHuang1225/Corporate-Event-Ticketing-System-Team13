@@ -48,6 +48,22 @@ func TestTicketService(t *testing.T) {
 			Description: "測試票券服務申請會拒絕不合法輸入與無 Redis 狀態",
 			Target:      TicketServiceApplyRejectsInvalidInputWithoutRedis,
 		},
+		{
+			Description: "測試票券服務 Redis 申請流程會拒絕各種 business rule",
+			Target:      TicketServiceApplyRejectsBusinessRulesWithRedis,
+		},
+		{
+			Description: "測試票券服務會優先使用 MyApplications 與 MyTickets 快取",
+			Target:      TicketServiceUsesRedisCacheForMyLists,
+		},
+		{
+			Description: "測試票券服務 queue env 與 retry helper 分支",
+			Target:      TicketServiceCoversQueueEnvAndRetryHelpers,
+		},
+		{
+			Description: "測試票券服務核銷會拒絕不合法與不存在 QR token",
+			Target:      TicketServiceCheckinRejectsMissingAndInvalidTokens,
+		},
 	}
 
 	utils.RunTestTasks(t, tasks)
