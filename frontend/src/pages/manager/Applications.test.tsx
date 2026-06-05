@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import axios from 'axios'
 import toast from 'react-hot-toast'
-import Applications from './Applications'
+import Applications from './Applications.tsx'
 import api from '../../api/client'
 import { renderWithQueryClient } from '../../test/test-utils'
 
