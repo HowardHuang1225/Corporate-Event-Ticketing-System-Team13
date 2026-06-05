@@ -299,15 +299,6 @@ func decodeManagerEventStatsResponse(body []byte) (managerEventStatsResponse, er
 	return utils.DecodeJSON[managerEventStatsResponse](body)
 }
 
-func managerApplicationListContains(apps []model.Application, id uuid.UUID) bool {
-	for _, app := range apps {
-		if app.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
 func seedManagerHandlerCheckin(db *gorm.DB, manager model.User, ticket model.Ticket) error {
 	checkin := model.Checkin{
 		TicketID:  ticket.ID,
