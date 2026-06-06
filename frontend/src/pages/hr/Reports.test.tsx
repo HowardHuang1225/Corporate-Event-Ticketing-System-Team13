@@ -88,7 +88,11 @@ function renderReportsWithStats(stats: typeof statsFixture, overview = overviewF
 }
 
 function stubCsvDownload() {
-  const createObjectURL = vi.fn(() => 'blob:report')
+  const blobs: Blob[] = []
+  const createObjectURL = vi.fn((blob: Blob) => {
+    blobs.push(blob)
+    return 'blob:report'
+  })
   Object.defineProperty(URL, 'createObjectURL', {
     value: createObjectURL,
     configurable: true,
@@ -106,7 +110,7 @@ function stubCsvDownload() {
     return element
   }) as typeof document.createElement)
 
-  return { createObjectURL, click }
+  return { createObjectURL, click, blobs }
 }
 
 describe('Reports', () => {
@@ -193,5 +197,42 @@ describe('Reports', () => {
     expect(emptyTexts.length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('未設定')).toBeInTheDocument()
     expect(screen.getAllByText('0').length).toBeGreaterThan(0)
+  })
+
+  it('CSV 匯出會正確處理逗號與雙引號欄位', async () => {
+    console.info('確認 CSV 匯出會正確 escape 特殊字元')
+    const { blobs } = stubCsvDownload()
+    renderReportsWithStats({
+      ...statsFixture,
+      event: { title: '年度 "家庭",日' },
+      by_department: [
+        { department: '資訊,部 "A"', count: 2 },
+      ],
+      by_ticket_type: [
+        {
+          ticket_type_name: '一般票 "A",B',
+          total: 8,
+          approved: 6,
+          cancelled: 1,
+          active: 5,
+        },
+      ],
+    }, [
+      {
+        ...overviewFixture[0],
+        title: '年度 "家庭",日',
+      },
+    ])
+
+    await screen.findByRole('option', { name: '年度家庭日' })
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'event-1')
+    await screen.findByText('1. 申請階段')
+    await userEvent.click(screen.getByRole('button', { name: /匯出詳情 CSV/ }))
+
+    expect(blobs).toHaveLength(1)
+    const csvText = await blobs[0].text()
+    expect(csvText).toContain('"活動標題","年度 ""家庭"",日"')
+    expect(csvText).toContain('"資訊,部 ""A""","2"')
+    expect(csvText).toContain('"一般票 ""A"",B","8","6","1","5"')
   })
 })

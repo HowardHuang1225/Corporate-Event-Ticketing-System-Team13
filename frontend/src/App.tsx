@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
+import { type ReactNode } from 'react'
 import { AuthProvider } from './contexts/AuthProvider'
+import { useAuth } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -12,6 +14,16 @@ import EventManage from './pages/manager/EventManage'
 import CheckIn from './pages/manager/CheckIn'
 import Reports from './pages/hr/Reports'
 import { appQueryClient } from './lib/queryClient'
+
+function RoleRoute({ allowedRoles, children }: { allowedRoles: string[]; children: ReactNode }) {
+  const { user } = useAuth()
+
+  if (!user || !allowedRoles.includes(user.role)) {
+    return <Navigate to="/events" replace />
+  }
+
+  return <>{children}</>
+}
 
 export default function App() {
   return (
@@ -33,10 +45,10 @@ export default function App() {
                 <Route index element={<Navigate to="/events" replace />} />
                 <Route path="events" element={<EventList />} />
                 <Route path="events/:id" element={<EventDetail />} />
-                <Route path="my-tickets" element={<MyTickets />} />
-                <Route path="manage/events" element={<EventManage />} />
-                <Route path="checkin" element={<CheckIn />} />
-                <Route path="reports" element={<Reports />} />
+                <Route path="my-tickets" element={<RoleRoute allowedRoles={['employee']}><MyTickets /></RoleRoute>} />
+                <Route path="manage/events" element={<RoleRoute allowedRoles={['event_manager']}><EventManage /></RoleRoute>} />
+                <Route path="checkin" element={<RoleRoute allowedRoles={['event_manager']}><CheckIn /></RoleRoute>} />
+                <Route path="reports" element={<RoleRoute allowedRoles={['hr']}><Reports /></RoleRoute>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

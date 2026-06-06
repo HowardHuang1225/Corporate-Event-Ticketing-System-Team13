@@ -275,4 +275,59 @@ describe('CheckIn', () => {
       expect(screen.queryByText('相機掃描 QR Code')).not.toBeInTheDocument()
     })
   })
+
+  it('相機掃描成功後會自動送出核銷並釋放 camera stream', async () => {
+    console.info('確認相機掃描成功會自動核銷並清理媒體串流')
+    const stopTrack = vi.fn()
+    const getUserMedia = vi.fn().mockResolvedValue({
+      getTracks: () => [{ stop: stopTrack }],
+    })
+    const jsQR = vi.fn(() => ({ data: 'SCANNED-QR-TOKEN|123456' }))
+    vi.stubGlobal('jsQR', jsQR)
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia,
+      },
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    Object.defineProperty(HTMLMediaElement.prototype, 'readyState', {
+      configurable: true,
+      get: () => 4,
+    })
+    Object.defineProperty(HTMLMediaElement.prototype, 'videoWidth', {
+      configurable: true,
+      get: () => 320,
+    })
+    Object.defineProperty(HTMLMediaElement.prototype, 'videoHeight', {
+      configurable: true,
+      get: () => 240,
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => ({
+        data: new Uint8ClampedArray(4),
+        width: 1,
+        height: 1,
+      })),
+    }) as unknown as CanvasRenderingContext2D)
+    apiPost.mockResolvedValue({ data: { data: { ticket: ticketFixture } } })
+
+    renderCheckIn()
+    await userEvent.click(screen.getByTitle('開啟相機掃描'))
+
+    await waitFor(() => {
+      expect(getUserMedia).toHaveBeenCalledWith({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+    })
+    await waitFor(() => {
+      expect(jsQR).toHaveBeenCalled()
+      expect(apiPost).toHaveBeenCalledWith('/checkin', { qr_token: 'SCANNED-QR-TOKEN|123456' })
+    })
+    expect(await screen.findByText(/核銷成功/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(stopTrack).toHaveBeenCalled()
+      expect(screen.queryByText('相機掃描 QR Code')).not.toBeInTheDocument()
+    })
+  })
 })

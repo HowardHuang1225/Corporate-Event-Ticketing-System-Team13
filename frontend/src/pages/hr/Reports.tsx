@@ -23,7 +23,7 @@ export default function Reports() {
   })
 
   const exportToCSV = (filename: string, rows: string[][]) => {
-    const csvContent = rows.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n")
+    const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
     const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
