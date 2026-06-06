@@ -102,10 +102,6 @@ type ApplyRequest struct {
 	IdempotencyKey string `json:"idempotency_key" binding:"required"`
 }
 
-type RejectRequest struct {
-	Reason string `json:"reason"`
-}
-
 type CheckinRequest struct {
 	QRToken string `json:"qr_token" binding:"required"`
 }
@@ -124,10 +120,10 @@ type CheckinResult struct {
 
 func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error) {
 	startTime := time.Now()
-    defer func() {
-        // 離開函式時，自動記錄這一次搶票 API 跑了幾秒
-        ticketRequestDuration.WithLabelValues("POST").Observe(time.Since(startTime).Seconds())
-    }()
+	defer func() {
+		// 離開函式時，自動記錄這一次搶票 API 跑了幾秒
+		ticketRequestDuration.WithLabelValues("POST").Observe(time.Since(startTime).Seconds())
+	}()
 
 	if s.queue.Enabled {
 		return s.ApplyQueued(userID, req)
@@ -179,13 +175,13 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 	newStock, err := s.redis.DecrBy(ctx, inventoryKey, int64(req.Quantity)).Result()
 	if err != nil {
 		// 埋點：Redis 爆了，計數器計為 failed
-        ticketRequestTotal.WithLabelValues("failed", req.EventID, "POST").Inc()
+		ticketRequestTotal.WithLabelValues("failed", req.EventID, "POST").Inc()
 		return ApplyResult{}, apperror.New(503, "BUSY", "Inventory system busy")
 	}
 	if newStock < 0 {
 		s.redis.IncrBy(ctx, inventoryKey, int64(req.Quantity))
 		// 埋點：票賣完了扣量失敗，計數器計為 sold_out
-        ticketRequestTotal.WithLabelValues("sold_out", req.EventID, "POST").Inc()
+		ticketRequestTotal.WithLabelValues("sold_out", req.EventID, "POST").Inc()
 		remainingTickets.WithLabelValues(req.EventID, req.TicketTypeID).Set(0)
 		for attempt := 0; attempt < 3; attempt++ {
 			var existing model.Application
@@ -336,16 +332,16 @@ func (s *Service) Apply(userID uuid.UUID, req ApplyRequest) (ApplyResult, error)
 
 	if err != nil {
 		// 埋點：DB 事務失敗（如版號衝突、死鎖）
-        ticketRequestTotal.WithLabelValues("db_error", req.EventID, "POST").Inc()
+		ticketRequestTotal.WithLabelValues("db_error", req.EventID, "POST").Inc()
 		return ApplyResult{}, err
 	}
 	if !created {
 		return ApplyResult{Application: existingApp, Created: false}, nil
 	}
 	// 成功搶到票 埋點
-    ticketRequestTotal.WithLabelValues("success", req.EventID, "POST").Inc()
-    // 拿取扣完後最新的 Redis 庫存，Set 給 Prometheus
-    remainingTickets.WithLabelValues(req.EventID, req.TicketTypeID).Set(float64(newStock))
+	ticketRequestTotal.WithLabelValues("success", req.EventID, "POST").Inc()
+	// 拿取扣完後最新的 Redis 庫存，Set 給 Prometheus
+	remainingTickets.WithLabelValues(req.EventID, req.TicketTypeID).Set(float64(newStock))
 
 	s.invalidateMyApplicationsCache(context.Background(), userID.String())
 	return ApplyResult{Application: createdApp, Created: true}, nil
@@ -379,103 +375,6 @@ func (s *Service) MyApplications(userID string) ([]model.Application, error) {
 	}
 
 	return apps, nil
-}
-
-func (s *Service) ListApplications(eventID string, status string) ([]model.Application, error) {
-	apps, err := s.applications.List(eventID, status)
-	if err != nil {
-		return nil, apperror.Internal("Failed to list applications")
-	}
-	return apps, nil
-}
-
-func (s *Service) ApproveApplication(applicationID string, reviewerID uuid.UUID) (model.Application, error) {
-	var app model.Application
-	if err := s.db.Preload("Event").First(&app, "id = ?", applicationID).Error; err != nil {
-		return model.Application{}, apperror.NotFound("Application not found")
-	}
-	if app.Status != "pending" {
-		return model.Application{}, apperror.New(400, "INVALID_STATUS", "Application is not pending")
-	}
-
-	now := time.Now()
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&model.Application{}).
-			Where("id = ? AND status = 'pending'", app.ID).
-			Updates(map[string]interface{}{
-				"status":      "approved",
-				"reviewed_by": reviewerID,
-				"reviewed_at": now,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apperror.Conflict("ALREADY_PROCESSED", "Application has already been approved or rejected")
-		}
-
-		for i := 0; i < app.Quantity; i++ {
-			ticket := model.Ticket{
-				ApplicationID: app.ID,
-				UserID:        app.UserID,
-				EventID:       app.EventID,
-				TicketTypeID:  app.TicketTypeID,
-				QRToken:       uuid.New().String(),
-				ExpiresAt:     app.Event.EndTime,
-			}
-			if err := tx.Create(&ticket).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return model.Application{}, err
-	}
-
-	if err := s.db.Preload("Tickets").First(&app, app.ID).Error; err != nil {
-		return model.Application{}, apperror.Internal("Failed to load application")
-	}
-	s.invalidateMyApplicationsCache(context.Background(), app.UserID.String())
-	s.invalidateMyTicketsCache(context.Background(), app.UserID.String())
-	return app, nil
-}
-
-func (s *Service) RejectApplication(applicationID string, reviewerID uuid.UUID, req RejectRequest) (model.Application, error) {
-	var app model.Application
-	if err := s.db.First(&app, "id = ?", applicationID).Error; err != nil {
-		return model.Application{}, apperror.NotFound("Application not found")
-	}
-	if app.Status != "pending" {
-		return model.Application{}, apperror.New(400, "INVALID_STATUS", "Application is not pending")
-	}
-
-	now := time.Now()
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&model.Application{}).
-			Where("id = ? AND status = 'pending'", app.ID).
-			Updates(map[string]interface{}{
-				"status":      "rejected",
-				"reason":      req.Reason,
-				"reviewed_by": reviewerID,
-				"reviewed_at": now,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apperror.Conflict("ALREADY_PROCESSED", "Application has already been approved or rejected")
-		}
-		if err := tx.Model(&model.TicketType{}).Where("id = ?", app.TicketTypeID).
-			Update("remaining", gorm.Expr("remaining + ?", app.Quantity)).Error; err != nil {
-			return err
-		}
-		s.returnInventory(app.TicketTypeID.String(), app.Quantity)
-		return nil
-	}); err != nil {
-		return model.Application{}, err
-	}
-	s.invalidateMyApplicationsCache(context.Background(), app.UserID.String())
-	return app, nil
 }
 
 func (s *Service) MyTickets(userID string) ([]model.Ticket, error) {
@@ -595,17 +494,22 @@ func (s *Service) CancelTicket(ticketID string, userID uuid.UUID) error {
 
 func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResult, error) {
 	parts := strings.Split(req.QRToken, "|")
+	if len(parts) != 2 {
+		return CheckinResult{}, apperror.Validation("Invalid qr_token format")
+	}
+
 	baseToken := parts[0]
 
 	if _, err := uuid.Parse(baseToken); err != nil {
 		return CheckinResult{}, apperror.Validation("Invalid qr_token format")
 	}
 
-	if len(parts) == 2 {
-		providedOTP := parts[1]
-		if !totp.Verify(baseToken, providedOTP, 60) {
-			return CheckinResult{}, apperror.New(403, "EXPIRED_QR", "防偽 QR Code 已過期，請員工重新整理畫面。")
-		}
+	providedOTP := parts[1]
+	if strings.TrimSpace(providedOTP) == "" {
+		return CheckinResult{}, apperror.Validation("Invalid qr_token format")
+	}
+	if !totp.Verify(baseToken, providedOTP, 60) {
+		return CheckinResult{}, apperror.New(403, "EXPIRED_QR", "防偽 QR Code 已過期，請員工重新整理畫面。")
 	}
 
 	var ticket model.Ticket
@@ -645,7 +549,7 @@ func (s *Service) Checkin(req CheckinRequest, checkerID uuid.UUID) (CheckinResul
 		return CheckinResult{}, err
 	}
 	ticketVerifiedTotal.WithLabelValues(ticket.EventID.String()).Inc()
-	
+
 	return CheckinResult{Message: "Check-in successful!", Ticket: ticket}, nil
 }
 

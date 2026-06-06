@@ -201,6 +201,39 @@ describe('EventDetail', () => {
     })
   })
 
+  it('申請數量超過每人上限時會交給 API 回傳錯誤', async () => {
+    console.info('確認申請數量超過上限時會顯示 API 錯誤')
+    const { container } = renderEventDetail()
+    apiPost.mockRejectedValue({
+      response: {
+        data: {
+          error: {
+            message: '超過每人票數上限',
+          },
+        },
+      },
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: '申請' }))
+
+    const quantityInput = container.querySelector<HTMLInputElement>('input[type="number"]')
+    if (!quantityInput) throw new Error('數量欄位沒有正確渲染')
+
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '4')
+    await userEvent.click(screen.getByRole('button', { name: '確認申請' }))
+
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith('/applications', {
+        event_id: 'event-1',
+        ticket_type_id: 'ticket-type-1',
+        quantity: 4,
+        idempotency_key: 'fixed-idempotency-key',
+      })
+    })
+    expect(toastError).toHaveBeenCalledWith('超過每人票數上限')
+  })
+
   it('API 沒有回傳活動資料時會顯示找不到活動', async () => {
     console.info('確認活動不存在的空資料分支')
     apiGet.mockResolvedValue({ data: { data: null } })

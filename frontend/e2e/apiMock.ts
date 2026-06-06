@@ -124,11 +124,15 @@ export async function mockApi(page: Page, handler: ApiHandler) {
   })
 }
 
-export async function mockTotp(page: Page, otp = '123456') {
+export async function mockTotp(page: Page, otp: string | string[] = '123456') {
+  const body = Array.isArray(otp)
+    ? `const otps = ${JSON.stringify(otp)};\nlet calls = 0;\nexport async function generateTOTP() {\n  const index = Math.min(calls, otps.length - 1);\n  calls += 1;\n  return otps[index];\n}\n`
+    : `export async function generateTOTP() { return ${JSON.stringify(otp)} }\n`
+
   await page.route('**/src/utils/totp.ts*', route => route.fulfill({
     status: 200,
     contentType: 'application/javascript',
-    body: `export async function generateTOTP() { return '${otp}' }\n`,
+    body,
   }))
 }
 

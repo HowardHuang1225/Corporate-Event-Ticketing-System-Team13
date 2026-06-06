@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
 import { resetAppQueryClient } from '../test/test-utils'
@@ -129,6 +129,10 @@ describe('員工票券整合流程', () => {
     generateTOTPMock.mockResolvedValue('123456')
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('員工可從活動列表進入詳情，送出申請後在我的票券看到自動核准票券', async () => {
     console.info('確認員工活動申請到自動核准票券的 App 層級整合流程')
     localStorage.setItem('token', 'employee-integration-token')
@@ -168,6 +172,103 @@ describe('員工票券整合流程', () => {
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
     expect(await screen.findByText('QR-AUTO-APPROVED-001|123456')).toBeInTheDocument()
     expect(generateTOTPMock).toHaveBeenCalledWith('QR-AUTO-APPROVED-001', 60)
+  })
+
+  it('員工申請進入排隊時會留在活動詳情且不立即顯示票券', async () => {
+    console.info('確認 App 層級 queue 申請不會誤顯示立即出票')
+    localStorage.setItem('token', 'employee-integration-token')
+    const get = vi.mocked(api.get)
+    const post = vi.mocked(api.post)
+
+    get.mockImplementation((url: string) => {
+      if (url === '/auth/me') {
+        return Promise.resolve({ data: { data: employeeUser } })
+      }
+      if (url === '/events') {
+        return Promise.resolve({ data: { data: [eventFixture] } })
+      }
+      if (url === '/events/event-auto-approved') {
+        return Promise.resolve({ data: { data: eventFixture } })
+      }
+      if (url === '/applications/my') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      if (url === '/tickets/my') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.reject(new Error(`未處理的 API 路徑：${url}`))
+    })
+    post.mockImplementation((url: string) => {
+      if (url === '/applications') {
+        return Promise.resolve({
+          status: 202,
+          data: {
+            data: {
+              id: 'queue-application-integration',
+              status: 'queued',
+              quantity: 1,
+              idempotency_key: 'fixed-integration-idempotency-key',
+            },
+          },
+        })
+      }
+      return Promise.reject(new Error(`未處理的 API 路徑：${url}`))
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('家庭同樂日')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('查看詳情 →'))
+    await userEvent.click(await screen.findByRole('button', { name: '申請' }))
+    await userEvent.click(screen.getByRole('button', { name: '確認申請' }))
+
+    await waitFor(() => {
+      expect(post).toHaveBeenCalledWith('/applications', {
+        event_id: 'event-auto-approved',
+        ticket_type_id: 'ticket-type-general',
+        quantity: 1,
+        idempotency_key: 'fixed-integration-idempotency-key',
+      })
+    })
+    expect(await screen.findByText('已進入排隊，系統會依序處理申請')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/events/event-auto-approved')
+
+    await userEvent.click(screen.getByText('我的票券'))
+    expect(await screen.findByText('還沒有申請記錄，快去瀏覽活動吧！')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /電子票券/ })).not.toBeInTheDocument()
+  })
+
+  it('員工我的票券會在下一個 60 秒時間窗刷新動態 QR token', async () => {
+    console.info('確認 App 層級我的票券流程會刷新動態 QR')
+    window.history.pushState({}, '', '/my-tickets')
+    localStorage.setItem('token', 'employee-integration-token')
+    generateTOTPMock.mockResolvedValueOnce('123456').mockResolvedValueOnce('654321')
+    configureEmployeeApi()
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '我的票券' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /電子票券/ })).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2099-07-01T01:00:00.000Z'))
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-AUTO-APPROVED-001|123456')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-AUTO-APPROVED-001|654321')).toBeInTheDocument()
+    expect(screen.queryByText('QR-AUTO-APPROVED-001|123456')).not.toBeInTheDocument()
+    expect(generateTOTPMock).toHaveBeenCalledTimes(2)
   })
 
   it('員工可在我的票券確認退票，並刷新票券與申請資料', async () => {

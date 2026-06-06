@@ -11,7 +11,7 @@
 - Redis 測票券申請庫存與 idempotency 相關流程
 - 專案自訂 `backend/test_utils` 測試工具
 
-目前共有 45 個 `*_test.go` 檔案，包含實際測試檔與 helper / fixture 測試檔。
+目前共有 50 個 `*_test.go` 檔案，包含實際測試檔與 helper / fixture 測試檔。
 
 ## 執行方式
 
@@ -130,6 +130,7 @@ go test ./scheduler
 - `backend/handler/employee/application_status_test.go`
 - `backend/handler/employee/ticket_my_test.go`
 - `backend/handler/employee/event_helpers_test.go`
+- `backend/handler/employee/employee_handler_coverage_test.go`
 
 測試內容：
 
@@ -140,8 +141,15 @@ go test ./scheduler
 - 查詢不存在活動會回傳 `NOT_FOUND`
 - 活動資格會依狀態與截止時間判斷可否申請
 - 員工送出申請後，目前測試期待狀態為 `approved`
+- 員工送出申請成功後，handler 測試會驗證實際建立對應數量票券、DB / Redis 庫存扣減、票券 QR token 為 UUID，以及重複 `idempotency_key` 不會重複出票或扣庫存
 - 員工只能看到自己的申請紀錄
 - 員工只能看到自己的已核准票券，且票券帶活動與票種資訊
+- queue status handler 可從既有 application 回傳狀態，查無資料時回傳 `NOT_FOUND`
+- queue mode handler 會回傳 `202 Accepted`、寫入 Redis queue status，且重複送出同一組 `idempotency_key` 會維持同一筆 queue application
+- 取消自己的 application 會歸還庫存並刪除票券
+- 單張退票 handler 會歸還庫存、建立 cancelled audit application，且不存在票券會回傳 `NOT_FOUND`
+- 不合法申請 payload 會回傳 `VALIDATION_ERROR`
+- 申請錯誤流程已補 handler 層：活動不存在、票種不存在、活動未發布、報名截止、售罄與超過每人上限
 
 注意：`ticket_apply_test.go` 的 function 名稱與進度文字仍有「pending」字樣，但 assertion 已經驗證目前自動核准流程，也就是回應 status 需為 `approved`。
 
@@ -152,6 +160,7 @@ go test ./scheduler
 - `backend/service/event/lifecycle_test.go`
 - `backend/service/event/draft_mutation_test.go`
 - `backend/service/event/draft_mutation_helpers_test.go`
+- `backend/service/event/service_operations_test.go`
 
 測試內容：
 
@@ -167,6 +176,11 @@ go test ./scheduler
 - 非 draft 活動不可更新或刪除
 - 刪除 draft 活動會刪除對應票種
 - draft 更新失敗時不會改動既有活動與票種
+- 建立活動會寫入 draft event 與 ticket types，未指定時每人票券上限預設為 1
+- 活動查詢會回傳清單與單筆資料，不存在活動回傳 `NOT_FOUND`
+- 發布與關閉活動會更新狀態，非法發布會被拒絕
+- 活動申請資格會依活動狀態、申請截止時間與不存在活動回傳結果
+- event cache TTL 與 cache key helper 會使用穩定 fallback
 
 ### Ticket Service
 
@@ -177,6 +191,9 @@ go test ./scheduler
 - `backend/service/ticket/cancellation_test.go`
 - `backend/service/ticket/checkin_test.go`
 - `backend/service/ticket/service_helpers_test.go`
+- `backend/service/ticket/service_coverage_test.go`
+- `backend/service/ticket/service_edge_coverage_test.go`
+- `backend/service/ticket/queue_test.go`
 
 測試內容：
 
@@ -189,6 +206,16 @@ go test ./scheduler
 - Redis inventory 也會維持只扣一次
 - 核銷過期票券會回傳 `TICKET_EXPIRED`
 - 過期票券不可被標記為已使用，也不可新增 checkin 紀錄
+- 員工票券列表會回傳申請、票券與核銷資料，manager 可查核銷資料
+- 核銷流程新增成功、重複核銷、缺少/格式錯誤/不存在 QR token、錯誤 OTP、上一個 60 秒時間窗動態 QR 可核銷，以及超過允許時間窗的舊動態 QR 回 `EXPIRED_QR` 分支
+- 核銷 API 只接受 `qr_token|otp` 兩段格式；裸 UUID、缺少 OTP 或 `qr_token|otp|extra` 這類 malformed dynamic QR 會回 `VALIDATION_ERROR`，不得核銷成功
+- 無 Redis 與不合法申請輸入會被拒絕；有 Redis 時會覆蓋售罄、未發布、截止、超過上限等 business rule
+- `MyApplications` / `MyTickets` 會優先使用 Redis cache，並有 cache miss fallback
+- queue 設定可由環境變數載入，helper 會處理 key、status mapping、stream message 與錯誤代碼轉換
+- queue 申請會建立 Redis waiting-room reservation，重複 idempotency key 會回傳同一筆 queue
+- queue status 會先讀 Redis，沒有熱資料時回退到 DB application
+- queue worker 會把有效 stream message 轉成 approved application 與票券，並更新 queue status
+- queue 會拒絕無效輸入、無 Redis、滿載 waiting room、不可申請活動、截止活動、超過上限與不存在活動
 
 ### Integration
 
@@ -206,10 +233,12 @@ go test ./scheduler
 - 相同 `idempotency_key` 重送不會重複建 application、票券或扣庫存
 - 員工可查到自己的已核准申請與票券
 - 員工退還未使用票券會刪除原票券、回補庫存並建立 cancelled audit application
-- manager 使用 QR token 核銷票券後，票券會標記 used 並建立 checkin
+- manager 使用超過允許時間窗的舊動態 QR token 核銷時會回 `EXPIRED_QR`，且不標記 used、不建立 checkin
+- manager 使用上一個 60 秒時間窗的動態 QR token 核銷票券後，票券會標記 used 並建立 checkin
 - 重複核銷會回傳 `ALREADY_CHECKED_IN`
 - 已核銷票券不可退票，會回傳 `ALREADY_USED`
 - 真實 route 權限矩陣會驗證未登入、employee、event_manager、HR 對主要 `/v1` routes 的允許與拒絕狀態
+- route 權限矩陣已擴充到 employee 申請/票券/queue、manager checkin/checkins/upload、manager/HR report stats、HR CSV export 等主要路由
 - `shared_utils_test.go` 提供 integration 測試共用的 setup、登入、HTTP request、Redis cleanup 與 response decode helper
 
 ### Manager Handler
@@ -219,9 +248,8 @@ go test ./scheduler
 - `backend/handler/manager/event_create_test.go`
 - `backend/handler/manager/event_action_test.go`
 - `backend/handler/manager/ticket_checkin_test.go`
-- `backend/handler/manager/ticket_generation_test.go`
-- `backend/handler/manager/application_review_test.go`
-- `backend/handler/manager/application_batch_review_test.go`
+- `backend/handler/manager/event_mutation_upload_test.go`
+- `backend/handler/manager/manager_handler_coverage_test.go`
 - `backend/handler/manager/*_helpers_test.go`
 
 目前啟用的測試內容：
@@ -231,19 +259,28 @@ go test ./scheduler
 - 發布 draft 活動會更新狀態為 `published`
 - 關閉 published 活動會更新狀態為 `closed`
 - 發布非 draft 活動會回傳 `INVALID_STATUS`
-- manager 可用 QR token / UUID token 核銷票券
+- manager 可用 `qr_token|otp` 動態 QR token 核銷票券
 - 核銷成功會標記 ticket used 並新增 checkin 紀錄
 - 核銷缺少 token、空白 token、格式錯誤會回傳 `VALIDATION_ERROR`
 - 核銷不存在 token 會回傳 `NOT_FOUND`
 - 核銷已使用票券會回傳 `ALREADY_CHECKED_IN`
-- 票券產生測試會驗證 approve 後產生的 ticket 與 QR token 皆為 UUID 且唯一
+- 更新 draft event 會替換票種，不存在、非 draft 與不合法 payload 會被拒絕
+- 刪除 draft event 會連同票種刪除，不存在或非 draft event 會被拒絕
+- 上傳檔案 validation 會拒絕缺少檔案、錯誤副檔名、內容類型不符與無效圖片
+- manager 可列出核銷紀錄並依活動篩選，也可查詢單一活動統計與不存在活動錯誤
 
-目前跳過的測試：
+因產品邏輯已改為員工申請自動核准，不再需要 manager approve/reject 審核流程；legacy manager 申請審核測試與核准後產票測試已移除。
 
-- `backend/handler/manager/application_review_test.go`
-- `backend/handler/manager/application_batch_review_test.go`
+### Report Service
 
-跳過原因是產品邏輯已改為員工申請自動核准，不再需要 manager approve/reject 審核流程。這兩個測試內仍保留 legacy 單筆與批次審核邏輯，但 `TestManagerApplicationReview` 與 `TestManagerApplicationBatchReview` 都已 `t.Skip`。
+檔案：`backend/service/report/service_test.go`
+
+測試內容：
+
+- 單一活動統計會計算報名、核准、取消、有效票券、核銷數、核銷率、部門分佈與票種統計
+- 單一活動 CSV 匯出會包含對應 metrics
+- 活動總覽會列出各活動報名與核銷統計，沒有票券的活動核銷率維持 0
+- 查詢不存在活動會回傳 `NOT_FOUND`
 
 ### HR Report Handler
 
@@ -289,28 +326,25 @@ go test ./scheduler
 
 - 後端測試需要 PostgreSQL；部分 ticket/employee apply 測試需要 Redis
 - 測試檔案中的註解、進度與子測試描述大多已使用中文
-- manager 單筆/批次審核測試目前是 legacy 且跳過，符合自動核准的新流程
+- manager 單筆/批次審核 route、handler 與測試已移除；目前申請成功時由員工申請流程直接自動核准並產出票券
 - `ticket_apply_test.go` 仍有舊命名與舊進度文字，但實際 assertion 已是自動核准的 `approved`
-- 動態 QR 核銷目前後端實作可解析 `qr_token|otp` 並保留裸 UUID token 相容性；既有後端測試主要仍覆蓋 UUID token 核銷流程，動態 OTP 成功/失敗案例尚未補齊
+- 動態 QR 核銷目前後端實作只接受 `qr_token|otp` 兩段格式，不再接受裸 UUID token；service 測試已覆蓋錯誤 OTP 回傳 `EXPIRED_QR`、上一個 60 秒時間窗合法 OTP 成功核銷、超過允許時間窗的舊 OTP 核銷失敗，integration 測試也已用真實 `/v1/checkin` 驗證允許窗內舊碼可通過、超過允許窗舊碼會失敗
+- malformed dynamic QR 測試已轉綠：`qr_token|otp|extra` 不會再被當成裸 `qr_token` 核銷成功
 - 若之後要清理測試命名，可以把 `ApplyTicketCreatesPendingApplication` 改成描述自動核准的名稱，但這會是測試檔維護工作，不影響目前行為
 
 ## 後續可補方向
 
-1. 員工自動核准後的 handler 細節
+1. 員工申請錯誤流程
 
-   目前 `ticket_apply_test.go` 驗證申請回應是 `approved`，但可再補：成功後實際建立對應數量 ticket、扣庫存、ticket QR token 格式、以及 application/ticket DB 關聯。
+   handler 層已補活動不存在、票種不存在、活動未發布、報名截止、售罄、超過每人票數上限與重複 idempotency。後續若 queue worker 與真實 route 要一起測，可再補「排隊後 worker drain 成 approved 並出票」的 integration。
 
-2. 員工申請錯誤流程
+2. Employee 退票 handler
 
-   可補活動不存在、票種不存在、活動未發布、報名截止、庫存不足、超過每人票數上限、重複 idempotency 的 handler 層測試。
+   handler 層已補成功退票與票券不存在。仍可再補 `/tickets/:id/cancel` 權限、票券屬於別人、已核銷不可退票等情境。
 
-3. Employee 退票 handler
+3. 動態 QR 核銷
 
-   service 已測單張退票，但 handler 層可補 `/tickets/:id/cancel` 權限、成功 response、票券不存在、票券屬於別人、已核銷不可退票等情境。
-
-4. 動態 QR 核銷
-
-   可補合法 `qr_token|otp` 可核銷、錯誤或過期 OTP 回傳 `EXPIRED_QR`、格式錯誤維持 `VALIDATION_ERROR`，以及裸 UUID token 相容流程仍可使用。
+   service 層已補錯誤 OTP 回傳 `EXPIRED_QR`、格式錯誤、裸 UUID 拒絕、上一個 60 秒時間窗的合法 `qr_token|otp` 成功核銷，以及超過允許時間窗的舊動態 QR 失敗案例；integration 層也已補允許窗內舊碼成功與超過允許窗舊碼失敗案例。
 
 5. Route 權限矩陣
 

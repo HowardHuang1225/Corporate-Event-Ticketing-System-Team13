@@ -33,16 +33,24 @@ func TestTicketService(t *testing.T) {
 			Target:      CheckinExpiredTicketReturnsTicketExpired,
 		},
 		{
-			Description: "測試票券服務列表查詢會回傳申請、票券與核銷資料",
-			Target:      TicketServiceListsUserAndManagerViews,
-		},
-		{
-			Description: "測試票券服務審核會更新申請、票券與庫存",
-			Target:      TicketServiceReviewsApplications,
+			Description: "測試票券服務列表查詢會回傳員工申請、票券與核銷資料",
+			Target:      TicketServiceListsUserAndCheckinViews,
 		},
 		{
 			Description: "測試票券服務核銷成功、重複核銷與 OTP 錯誤",
 			Target:      TicketServiceCheckinSuccessAndTokenErrors,
+		},
+		{
+			Description: "測試票券服務會拒絕格式異常的動態 QR token",
+			Target:      TicketServiceCheckinRejectsMalformedDynamicQRToken,
+		},
+		{
+			Description: "測試票券服務可接受上一個 60 秒時間窗的動態 QR Code",
+			Target:      TicketServiceCheckinAcceptsPreviousDynamicQRCode,
+		},
+		{
+			Description: "測試票券服務會拒絕超過允許時間窗的舊動態 QR Code",
+			Target:      TicketServiceCheckinRejectsExpiredDynamicQRCode,
 		},
 		{
 			Description: "測試票券服務申請會拒絕不合法輸入與無 Redis 狀態",

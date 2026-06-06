@@ -3,8 +3,10 @@ package integration
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"ticketing-system/backend/model"
+	totputil "ticketing-system/backend/pkg/totp"
 	utils "ticketing-system/backend/test_utils"
 
 	"github.com/gin-gonic/gin"
@@ -123,9 +125,45 @@ func TicketLifecycleIntegration(t *testing.T, errs *utils.Errors) {
 		return
 	}
 
-	logIntegrationStep(t, "活動管理者使用另一張票的 QR token 核銷，應標記 used 並建立 checkin")
+	logIntegrationStep(t, "活動管理者使用超過允許時間窗的舊動態 QR token 核銷，應回 EXPIRED_QR 且不建立 checkin")
+	expiredQRToken := integrationExpiredWindowDynamicQRToken(ticketToCheckin.QRToken)
+	expiredCheckinResp := performIntegrationJSON(ctx.Router, http.MethodPost, "/v1/checkin", managerToken, gin.H{
+		"qr_token": expiredQRToken,
+	})
+	if expiredCheckinResp.Code != http.StatusForbidden {
+		errs.Add("過期動態 QR 核銷票券", "expected status 403, got %d with body %s", expiredCheckinResp.Code, expiredCheckinResp.Body.String())
+		return
+	}
+	if err := utils.AssertHandlerErrorCode(expiredCheckinResp.Body.Bytes(), "EXPIRED_QR"); err != nil {
+		errs.Add("檢查過期動態 QR 核銷錯誤碼", "%v", err)
+		return
+	}
+
+	var beforeValidCheckinCount int64
+	if err := ctx.DB.Model(&model.Checkin{}).
+		Where("ticket_id = ?", ticketToCheckin.ID).
+		Count(&beforeValidCheckinCount).Error; err != nil {
+		errs.Add("統計過期動態 QR 後 checkin 紀錄", "%v", err)
+		return
+	}
+	if beforeValidCheckinCount != 0 {
+		errs.Add("檢查過期動態 QR 不建立 checkin", "expected 0, got %d", beforeValidCheckinCount)
+		return
+	}
+	var ticketAfterExpiredQR model.Ticket
+	if err := ctx.DB.First(&ticketAfterExpiredQR, "id = ?", ticketToCheckin.ID).Error; err != nil {
+		errs.Add("讀取過期動態 QR 後票券", "%v", err)
+		return
+	}
+	if ticketAfterExpiredQR.IsUsed {
+		errs.Add("檢查過期動態 QR 不標記票券 used", "expected is_used=false")
+		return
+	}
+
+	logIntegrationStep(t, "活動管理者使用上一個 60 秒時間窗的動態 QR token 核銷，應標記 used 並建立 checkin")
+	dynamicQRToken := integrationPreviousWindowDynamicQRToken(ticketToCheckin.QRToken)
 	checkinResp := performIntegrationJSON(ctx.Router, http.MethodPost, "/v1/checkin", managerToken, gin.H{
-		"qr_token": ticketToCheckin.QRToken,
+		"qr_token": dynamicQRToken,
 	})
 	if checkinResp.Code != http.StatusOK {
 		errs.Add("活動管理者核銷票券", "expected status 200, got %d with body %s", checkinResp.Code, checkinResp.Body.String())
@@ -156,7 +194,7 @@ func TicketLifecycleIntegration(t *testing.T, errs *utils.Errors) {
 
 	logIntegrationStep(t, "同一張票重複核銷時應回 ALREADY_CHECKED_IN")
 	duplicateCheckinResp := performIntegrationJSON(ctx.Router, http.MethodPost, "/v1/checkin", managerToken, gin.H{
-		"qr_token": ticketToCheckin.QRToken,
+		"qr_token": dynamicQRToken,
 	})
 	if duplicateCheckinResp.Code != http.StatusConflict {
 		errs.Add("重複核銷票券", "expected status 409, got %d with body %s", duplicateCheckinResp.Code, duplicateCheckinResp.Body.String())
@@ -177,4 +215,31 @@ func TicketLifecycleIntegration(t *testing.T, errs *utils.Errors) {
 		errs.Add("檢查已核銷票券不可退票錯誤碼", "%v", err)
 		return
 	}
+}
+
+func integrationPreviousWindowDynamicQRToken(baseToken string) string {
+	now := time.Now()
+	if seconds := now.Unix() % 60; seconds >= 58 {
+		time.Sleep(time.Duration(61-seconds) * time.Second)
+		now = time.Now()
+	}
+	return baseToken + "|" + totputil.Generate(baseToken, now.Unix()/60-1)
+}
+
+func integrationExpiredWindowDynamicQRToken(baseToken string) string {
+	currentCounter := time.Now().Unix() / 60
+	allowed := map[string]bool{
+		totputil.Generate(baseToken, currentCounter-1): true,
+		totputil.Generate(baseToken, currentCounter):   true,
+		totputil.Generate(baseToken, currentCounter+1): true,
+	}
+
+	for offset := int64(2); offset < 20; offset++ {
+		otp := totputil.Generate(baseToken, currentCounter-offset)
+		if !allowed[otp] {
+			return baseToken + "|" + otp
+		}
+	}
+
+	panic("could not find a non-colliding expired dynamic QR token")
 }

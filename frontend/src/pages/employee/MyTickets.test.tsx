@@ -1,5 +1,5 @@
-import { describe, expect, it, beforeEach, vi, type Mock } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, beforeEach, vi, type Mock } from 'vitest'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import MyTickets from './MyTickets'
 import api from '../../api/client'
@@ -86,6 +86,10 @@ describe('MyTickets', () => {
     vi.unstubAllGlobals()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('會載入申請記錄與電子票券，並可展開 QR token', async () => {
     console.info('確認我的票券頁會顯示申請記錄與 QR')
 
@@ -101,6 +105,37 @@ describe('MyTickets', () => {
     expect(generateTOTPMock).toHaveBeenCalledWith('QR-TOKEN-123456', 60)
     expect(screen.getByText(/防偽驗證碼將在/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '收起 QR' })).toBeInTheDocument()
+  })
+
+  it('動態 QR token 每 60 秒會重新產生', async () => {
+    console.info('確認動態 QR 會在下一個 60 秒時間窗刷新')
+
+    generateTOTPMock.mockResolvedValueOnce('111111').mockResolvedValueOnce('222222')
+    renderMyTickets()
+
+    expect(await screen.findAllByText('年度家庭日')).toHaveLength(2)
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2099-07-01T01:00:00.000Z'))
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-TOKEN-123456|111111')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-TOKEN-123456|222222')).toBeInTheDocument()
+    expect(screen.queryByText('QR-TOKEN-123456|111111')).not.toBeInTheDocument()
+    expect(generateTOTPMock).toHaveBeenCalledTimes(2)
+    expect(generateTOTPMock).toHaveBeenLastCalledWith('QR-TOKEN-123456', 60)
   })
 
   it('使用者取消確認退票時不會呼叫退票 API', async () => {

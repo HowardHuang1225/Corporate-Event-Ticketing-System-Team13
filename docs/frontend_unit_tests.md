@@ -33,12 +33,12 @@ npm run build
 
 | 指標 | 覆蓋率 |
 | --- | ---: |
-| Statements | 88.13% |
-| Branches | 73.08% |
-| Functions | 83.15% |
-| Lines | 88.21% |
+| Statements | 90.89% |
+| Branches | 80.88% |
+| Functions | 96.24% |
+| Lines | 91.57% |
 
-目前員工申請不需要 manager 核准，因此已移除 legacy `Applications.tsx` 申請審核頁與原先的 approve/reject 測試，coverage 不再計入 manager 審核流程。
+目前前端共有 18 個 Vitest test files、95 個 Vitest 測試。因員工申請已改為自動核准，legacy manager 申請審核頁 `ApplicationsPage.tsx` 與對應 `Applications.test.tsx` 已移除。
 
 ## Unit Tests
 
@@ -118,9 +118,11 @@ npm run build
 - 申請票券會送出 `event_id`、`ticket_type_id`、`quantity`、`idempotency_key`
 - 申請成功包含一般成功與排隊成功兩種訊息
 - 申請失敗會顯示後端錯誤
+- `generateTOTP` 會依指定時間窗計算 counter，且同一 secret 在 60 秒時間窗跨過後會產生不同 OTP
 - 我的票券會顯示申請記錄與電子票券
 - QR 可以展開/收合
 - QR 展開後會透過 mock `generateTOTP` 產生固定動態碼，驗證畫面顯示 `qr_token|otp` 格式與防偽倒數提示
+- 動態 QR 展開後，每進入下一個 60 秒時間窗會重新產生並替換為新的 `qr_token|otp`
 - 退票取消時不呼叫 API
 - 退票成功會刷新票券與申請資料
 - 退票失敗會顯示錯誤
@@ -180,5 +182,5 @@ Playwright end-to-end test 已拆到獨立文件記錄：`docs/frontend_e2e_test
 ## 後續可補方向
 
 - 針對 branch coverage 仍偏低的 fallback UI 再補更細案例，例如缺少巢狀資料時的 `—` 顯示
-- 擴充 Playwright end-to-end test 的錯誤分支，例如失效 token、排隊申請與 CSV 匯出失敗流程
+- 擴充 Playwright end-to-end test 的錯誤分支，例如 CSV 匯出失敗流程與更多跨角色直接 URL 存取情境
 - 若後續產品邏輯固定，可再把目前部分 source contract test 改成真正元件互動測試

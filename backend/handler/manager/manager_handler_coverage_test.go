@@ -30,14 +30,6 @@ type managerEventStatsResponse struct {
 func TestManagerHandlerCoverageRoutes(t *testing.T) {
 	tasks := []utils.Task{
 		{
-			Description: "測試管理者可列出申請並使用 event/status 查詢參數篩選",
-			Target:      ManagerListApplicationsReturnsFilteredApplications,
-		},
-		{
-			Description: "測試管理者拒絕申請路由會接受原因並更新申請狀態",
-			Target:      ManagerRejectApplicationRouteUpdatesPendingApplication,
-		},
-		{
 			Description: "測試管理者可列出核銷紀錄並依活動篩選",
 			Target:      ManagerListCheckinsReturnsFilteredRecords,
 		},
@@ -48,108 +40,6 @@ func TestManagerHandlerCoverageRoutes(t *testing.T) {
 	}
 
 	utils.RunTestTasks(t, tasks)
-}
-
-func ManagerListApplicationsReturnsFilteredApplications(t *testing.T, errs *utils.Errors) {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-
-	utils.PrintTestProgress("管理者申請列表：確認 ListApplications 會回傳全部申請並依 event/status 篩選。\n")
-	utils.PrintTestProgress("==================================================\n")
-
-	tx, users, cleanup, err := setupManagerApplicationTest(t)
-	if err != nil {
-		errs.Add("準備申請列表測試資料", "%v", err)
-		return
-	}
-	t.Cleanup(cleanup)
-
-	event, _, pendingApp, err := seedManagerApplicationFixture(tx, users, "pending", 1, 9)
-	if err != nil {
-		errs.Add("建立 pending 申請", "%v", err)
-		return
-	}
-	router := newManagerCoverageRouter(tx, users.Manager)
-	filtered := performManagerGet(router, "/applications?event_id="+event.ID.String()+"&status=pending")
-	if filtered.Code != http.StatusOK {
-		errs.Add("篩選申請", "expected 200, got %d body=%s", filtered.Code, filtered.Body.String())
-		return
-	}
-	filteredBody, err := decodeManagerApplicationListResponse(filtered.Body.Bytes())
-	if err != nil {
-		errs.Add("解析篩選申請", "%v", err)
-		return
-	}
-	if len(filteredBody.Data) != 1 || filteredBody.Data[0].ID != pendingApp.ID {
-		errs.Add("檢查篩選申請", "預期只回傳 %s，實際 %+v", pendingApp.ID, filteredBody.Data)
-		return
-	}
-
-	utils.PrintTestProgress("==================================================\n\n")
-}
-
-func ManagerRejectApplicationRouteUpdatesPendingApplication(t *testing.T, errs *utils.Errors) {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-
-	utils.PrintTestProgress("管理者拒絕申請：確認 RejectApplication handler 會讀取 user_id、JSON reason 並更新資料。\n")
-	utils.PrintTestProgress("==================================================\n")
-
-	tx, users, cleanup, err := setupManagerApplicationTest(t)
-	if err != nil {
-		errs.Add("準備拒絕申請測試資料", "%v", err)
-		return
-	}
-	t.Cleanup(cleanup)
-
-	_, ticketType, app, err := seedManagerApplicationFixture(tx, users, "pending", 2, 8)
-	if err != nil {
-		errs.Add("建立待拒絕申請", "%v", err)
-		return
-	}
-
-	router := newManagerCoverageRouter(tx, users.Manager)
-	reason := "名額保留給候補員工"
-	resp := utils.PerformJSON(router, http.MethodPost, "/applications/"+app.ID.String()+"/reject", gin.H{"reason": reason})
-	if resp.Code != http.StatusOK {
-		errs.Add("拒絕 pending 申請", "expected 200, got %d body=%s", resp.Code, resp.Body.String())
-		return
-	}
-	var updated model.Application
-	if err := tx.First(&updated, "id = ?", app.ID).Error; err != nil {
-		errs.Add("重查拒絕申請", "%v", err)
-		return
-	}
-	if updated.Status != "rejected" || updated.Reason == nil || *updated.Reason != reason {
-		errs.Add("檢查拒絕申請更新", "更新後資料不符預期：%+v", updated)
-		return
-	}
-	if updated.ReviewedBy == nil || *updated.ReviewedBy != users.Manager.ID || updated.ReviewedAt == nil {
-		errs.Add("檢查拒絕審核者", "reviewed_by=%v reviewed_at=%v", updated.ReviewedBy, updated.ReviewedAt)
-		return
-	}
-
-	remaining, err := managerReviewTicketTypeRemaining(tx, ticketType.ID.String())
-	if err != nil {
-		errs.Add("查詢拒絕後庫存", "%v", err)
-		return
-	}
-	if remaining != 10 {
-		errs.Add("檢查拒絕後庫存", "預期 10，實際 %d", remaining)
-		return
-	}
-
-	missing := utils.PerformJSON(router, http.MethodPost, "/applications/"+uuid.New().String()+"/reject", gin.H{"reason": reason})
-	if missing.Code != http.StatusNotFound {
-		errs.Add("拒絕不存在申請", "expected 404, got %d body=%s", missing.Code, missing.Body.String())
-		return
-	}
-	if err := utils.AssertHandlerErrorCode(missing.Body.Bytes(), "NOT_FOUND"); err != nil {
-		errs.Add("拒絕不存在申請", "%v", err)
-		return
-	}
-
-	utils.PrintTestProgress("==================================================\n\n")
 }
 
 func ManagerListCheckinsReturnsFilteredRecords(t *testing.T, errs *utils.Errors) {
@@ -277,8 +167,6 @@ func newManagerCoverageRouter(db *gorm.DB, manager model.User) *gin.Engine {
 		c.Set("role", "event_manager")
 		c.Next()
 	})
-	router.GET("/applications", handler.ListApplications)
-	router.POST("/applications/:id/reject", handler.RejectApplication)
 	router.GET("/checkins", handler.ListCheckins)
 	router.GET("/reports/events/:id/stats", handler.EventStats)
 	return router

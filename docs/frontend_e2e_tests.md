@@ -10,6 +10,8 @@ End-to-end test 放在 `frontend/e2e/`，命名為 `*.spec.ts`，並由 `fronten
 
 員工申請活動目前會自動核准並產出票券，因此 E2E 不驗證 manager approve/reject 審核流程。
 
+目前 Playwright 共有 13 個 end-to-end tests。
+
 ## 測試指令
 
 在 `frontend/` 目錄下執行：
@@ -28,6 +30,7 @@ npm run test:e2e
 
 - 未登入訪問受保護頁面會導向 `/login`
 - 登入失敗時會顯示後端錯誤訊息
+- localStorage 既有 token 失效且 `/auth/me` 回 401 時，會清除 token 並導回 `/login`
 - 不同角色登入後會看到對應導覽項目
 
 ### Employee Ticket Flow
@@ -41,6 +44,8 @@ npm run test:e2e
 - 申請成功後前端顯示自動核准與自動發票訊息
 - 「我的票券」會顯示已核准申請與未使用票券
 - QR 展開後會顯示 `qr_token|otp` 格式，測試以固定 mock TOTP 驗證完整動態 QR 與倒數提示
+- 使用 Playwright clock `runFor(60_000)` 快轉下一個 60 秒時間窗，驗證動態 QR 會從舊 OTP 替換成新 OTP
+- `/applications` 回 `202 queued` 時，前端會顯示排隊訊息、留在活動詳情頁，且不會立即顯示電子票券
 
 ### Manager Event Flow
 
@@ -53,7 +58,7 @@ npm run test:e2e
 - 建立活動 payload 會帶入標題、描述、地點、地域、每人限額與票種
 - Manager 可發布草稿活動與截止已發布活動
 - Manager 可輸入 `qr_token|otp` 動態 QR 完成核銷
-- 已核銷與找不到票券會顯示對應錯誤訊息
+- 已核銷、找不到票券與過期動態 QR `EXPIRED_QR` 會顯示對應錯誤訊息
 
 ### HR Report Flow
 
@@ -87,13 +92,11 @@ npm run test:e2e
 - 角色 fixture：employee、manager、HR
 - 活動、申請、票券 fixture
 - `mockApi`：攔截 `/v1/**` API
-- `mockTotp`：攔截 `frontend/src/utils/totp.ts` 並固定 `generateTOTP`
+- `mockTotp`：攔截 `frontend/src/utils/totp.ts`，可固定 `generateTOTP` 或依序回傳多個 OTP 以測試動態 QR 刷新
 - `fulfillData` / `fulfillError`：回傳一致的 API response 格式
 - `loginAs`：共用登入操作
 
 ## 後續可補方向
 
-- 失效 token 重新導向登入流程
-- `/applications` 回傳 `queued` 的排隊申請流程
 - CSV 匯出失敗時的錯誤提示
-- 核銷動態碼過期時顯示後端 `EXPIRED_QR` 錯誤
+- 更多跨角色直接輸入 URL 的負向情境，例如 employee 直接進 `/reports`

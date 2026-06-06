@@ -57,10 +57,8 @@ backend/
 
 ### 核銷流程 (Check-in)
 - 檔案：`handler/manager/handler.go`, `service/ticket/service.go`, `pkg/totp/totp.go`
-- 說明：管理員掃描 QR Code 後，系統會解析 `qr_token`。目前支援兩種格式：
-  - 裸 UUID：`<qr_token>`，保留既有手動輸入與舊 QR 相容性。
-  - 動態 QR：`<qr_token>|<otp>`，其中 `otp` 是以 `qr_token` 與時間窗產生的 6 位數 TOTP。
-- 若收到動態 QR，後端會先驗證 OTP；錯誤或過期時回傳 `EXPIRED_QR`。驗證通過後再用 base `qr_token` 查票券，確保票券未核銷且未過期，成功後標記 `is_used = true` 並建立 `Checkin` 紀錄。
+- 說明：管理員掃描 QR Code 後，系統會解析 `qr_token`。核銷 API 目前只接受動態 QR 格式 `<qr_token>|<otp>`，其中 `otp` 是以 `qr_token` 與時間窗產生的 6 位數 TOTP。
+- 裸 UUID、缺少 OTP 或超過兩段的 token 會被視為 `VALIDATION_ERROR`。收到動態 QR 後，後端會先驗證 OTP；目前核銷驗證會接受目前、上一個與下一個 60 秒時間窗，以容忍現場裝置時間差與剛跨秒的舊 QR。錯誤或過期時回傳 `EXPIRED_QR`。驗證通過後再用 base `qr_token` 查票券，確保票券未核銷且未過期，成功後標記 `is_used = true` 並建立 `Checkin` 紀錄。
 
 ### 數據統計 (Report)
 - 檔案：`handler/report.go`

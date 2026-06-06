@@ -251,45 +251,6 @@ func (h *Handler) CloseEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, shared.OK(event))
 }
 
-func (h *Handler) ListApplications(c *gin.Context) {
-	apps, err := h.tickets.ListApplications(c.Query("event_id"), c.Query("status"))
-	if err != nil {
-		shared.WriteError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, shared.OK(apps))
-}
-
-func (h *Handler) ApproveApplication(c *gin.Context) {
-	userID, err := shared.UserID(c)
-	if err != nil {
-		shared.WriteError(c, err)
-		return
-	}
-	app, err := h.tickets.ApproveApplication(c.Param("id"), userID)
-	if err != nil {
-		shared.WriteError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, shared.OK(app))
-}
-
-func (h *Handler) RejectApplication(c *gin.Context) {
-	userID, err := shared.UserID(c)
-	if err != nil {
-		shared.WriteError(c, err)
-		return
-	}
-	var req ticketsvc.RejectRequest
-	_ = c.ShouldBindJSON(&req)
-	app, err := h.tickets.RejectApplication(c.Param("id"), userID, req)
-	if err != nil {
-		shared.WriteError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, shared.OK(app))
-}
-
 func (h *Handler) Checkin(c *gin.Context) {
 	var req ticketsvc.CheckinRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -393,7 +354,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, shared.Error("VALIDATION_ERROR", "Invalid image format"))
 			return
 		}
-		
+
 		// 重置檔案指標供後續上傳
 		if _, err := file.Seek(0, 0); err != nil {
 			c.JSON(http.StatusInternalServerError, shared.Error("VALIDATION_ERROR", "Failed to reset file pointer"))
@@ -408,7 +369,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 
 	contentType := detectedType // 使用檢測出來的真實 Content-Type，不依賴前端傳值
-	
+
 	// Generate unique filename
 	objectName := fmt.Sprintf("%s.%s", uuid.New().String(), ext)
 
