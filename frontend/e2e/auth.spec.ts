@@ -39,6 +39,33 @@ test.describe('登入與權限 e2e', () => {
     })
   })
 
+  test('既有 token 失效時會清除登入狀態並導回登入頁', async ({ page }) => {
+    await mockApi(page, async ({ route, path, request }) => {
+      if (path === '/auth/me' && request.method() === 'GET') {
+        await fulfillError(route, 401, 'Token expired', 'UNAUTHORIZED')
+        return
+      }
+      await fulfillError(route, 404, `失效 token 流程不應呼叫：${path}`, 'NOT_MOCKED')
+    })
+
+    await page.goto('/login')
+    await page.evaluate(() => {
+      window.localStorage.setItem('token', 'expired-e2e-token')
+    })
+
+    await test.step('直接進入受保護頁面', async () => {
+      await page.goto('/events', { waitUntil: 'domcontentloaded' })
+    })
+
+    await test.step('確認 token 被移除並回到登入頁', async () => {
+      await expect(page).toHaveURL(/\/login$/)
+      await expect(page.locator('#employee-id')).toBeVisible()
+      await expect(page.locator('#password')).toBeVisible()
+      const token = await page.evaluate(() => window.localStorage.getItem('token'))
+      expect(token).toBeNull()
+    })
+  })
+
   test('不同角色登入後會看到對應導覽項目', async ({ page }) => {
     await mockApi(page, async ({ route, path, request }) => {
       if (path === '/auth/login' && request.method() === 'POST') {

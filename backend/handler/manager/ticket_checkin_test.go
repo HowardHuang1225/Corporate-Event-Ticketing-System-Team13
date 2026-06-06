@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	utils "ticketing-system/backend/test_utils"
@@ -14,8 +15,8 @@ import (
 func TestManagerTicketCheckin(t *testing.T) {
 	tasks := []utils.Task{
 		{
-			Description: "測試管理者可用掃描 QR code 或手動輸入 UUID token 核銷票券",
-			Target:      CheckinAcceptsScannedQRCodeAndManualUUIDToken,
+			Description: "測試管理者可用動態 QR code token 核銷票券",
+			Target:      CheckinAcceptsDynamicQRCodeToken,
 		},
 		{
 			Description: "測試核銷會拒絕不合法或不存在的識別碼",
@@ -26,11 +27,11 @@ func TestManagerTicketCheckin(t *testing.T) {
 	utils.RunTestTasks(t, tasks)
 }
 
-func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Errors) {
+func CheckinAcceptsDynamicQRCodeToken(t *testing.T, errs *utils.Errors) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	utils.PrintTestProgress("票券核銷：管理者可掃描 QR code token 或手動輸入 UUID token 完成核銷。\n")
+	utils.PrintTestProgress("票券核銷：管理者可使用 qr_token|otp 動態 QR token 完成核銷。\n")
 	utils.PrintTestProgress("==================================================\n")
 
 	tx, users, cleanup, err := setupManagerTicketLifecycleTest(t)
@@ -46,9 +47,9 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 		errs.Add("seed the scanned QR code check-in ticket", "%v", err)
 		return
 	}
-	manualTicket, err := seedManagerCheckinTicket(tx, users, false)
+	secondTicket, err := seedManagerCheckinTicket(tx, users, false)
 	if err != nil {
-		errs.Add("seed the manual UUID token check-in ticket", "%v", err)
+		errs.Add("seed the second dynamic QR check-in ticket", "%v", err)
 		return
 	}
 
@@ -60,15 +61,15 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 	}{
 		{
 			name:     "掃描 QR code",
-			progress: "使用產生 QR code 解析出的 UUID token 核銷票券。",
-			payload:  gin.H{"qr_token": scannedTicket.QRToken},
+			progress: "使用掃描取得的動態 QR token 核銷票券。",
+			payload:  gin.H{"qr_token": managerCurrentWindowDynamicQRToken(scannedTicket.QRToken)},
 			ticket:   scannedTicket.ID,
 		},
 		{
-			name:     "手動輸入 UUID token",
-			progress: "手動輸入 QR code 對應的 UUID token 核銷票券。",
-			payload:  gin.H{"qr_token": manualTicket.QRToken},
-			ticket:   manualTicket.ID,
+			name:     "手動輸入動態 QR token",
+			progress: "手動輸入完整 qr_token|otp 動態 QR token 核銷票券。",
+			payload:  gin.H{"qr_token": managerCurrentWindowDynamicQRToken(secondTicket.QRToken)},
+			ticket:   secondTicket.ID,
 		},
 	}
 
@@ -83,8 +84,13 @@ func CheckinAcceptsScannedQRCodeAndManualUUIDToken(t *testing.T, errs *utils.Err
 				errs.Add(tt.progress, "expected test payload to contain qr_token")
 				return
 			}
-			if parsed, err := uuid.Parse(token); err != nil || parsed == uuid.Nil {
-				errs.Add(tt.progress, "expected qr_token %q to be a valid UUID token", token)
+			baseToken, _, ok := strings.Cut(token, "|")
+			if !ok {
+				errs.Add(tt.progress, "expected qr_token %q to contain dynamic OTP separator", token)
+				return
+			}
+			if parsed, err := uuid.Parse(baseToken); err != nil || parsed == uuid.Nil {
+				errs.Add(tt.progress, "expected base qr_token %q to be a valid UUID token", baseToken)
 				return
 			}
 
@@ -187,15 +193,15 @@ func CheckinRejectsInvalidOrUnknownIdentifiers(t *testing.T, errs *utils.Errors)
 		},
 		{
 			name:       "不存在的 QR token",
-			progress:   "送出核銷請求時使用格式正確但不存在的 UUID token 應被拒絕。",
-			payload:    gin.H{"qr_token": uuid.New().String()},
+			progress:   "送出核銷請求時使用格式正確但不存在的動態 QR token 應被拒絕。",
+			payload:    gin.H{"qr_token": managerCurrentWindowDynamicQRToken(uuid.New().String())},
 			wantStatus: http.StatusNotFound,
 			wantCode:   "NOT_FOUND",
 		},
 		{
 			name:       "票券已核銷",
-			progress:   "送出核銷請求時使用已被核銷過的 UUID token 應被拒絕。",
-			payload:    gin.H{"qr_token": usedTicket.QRToken},
+			progress:   "送出核銷請求時使用已被核銷過的動態 QR token 應被拒絕。",
+			payload:    gin.H{"qr_token": managerCurrentWindowDynamicQRToken(usedTicket.QRToken)},
 			wantStatus: http.StatusConflict,
 			wantCode:   "ALREADY_CHECKED_IN",
 		},

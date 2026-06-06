@@ -47,7 +47,7 @@ func CheckinExpiredTicketReturnsTicketExpired(t *testing.T, errs *utils.Errors) 
 			}
 			expiredTicket := tickets[0]
 
-			_, err = service.Checkin(CheckinRequest{QRToken: expiredTicket.QRToken}, users.Manager.ID)
+			_, err = service.Checkin(CheckinRequest{QRToken: ticketServiceCurrentWindowDynamicQRToken(expiredTicket.QRToken)}, users.Manager.ID)
 			if assertErr := assertTicketServiceAppError(err, http.StatusGone, "TICKET_EXPIRED"); assertErr != nil {
 				errs.Add(tt.progress, "%v", assertErr)
 				return

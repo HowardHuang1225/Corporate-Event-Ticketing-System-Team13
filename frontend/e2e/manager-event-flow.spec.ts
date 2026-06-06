@@ -130,6 +130,10 @@ test.describe('Manager 活動與核銷 e2e', () => {
           await fulfillError(route, 404, '找不到此票券', 'NOT_FOUND')
           return
         }
+        if (payload.qr_token === 'QR-EXPIRED|000001') {
+          await fulfillError(route, 403, '防偽 QR Code 已過期，請員工重新整理畫面。', 'EXPIRED_QR')
+          return
+        }
 
         await fulfillData(route, {
           ticket: {
@@ -170,6 +174,11 @@ test.describe('Manager 活動與核銷 e2e', () => {
       await page.locator('#qr-token-input').fill('QR-NOT-FOUND|123456')
       await page.getByRole('button', { name: '確認核銷' }).click()
       await expect(page.getByText(/找不到此票券/)).toBeVisible()
+
+      await page.locator('#qr-token-input').fill('QR-EXPIRED|000001')
+      await page.getByRole('button', { name: '確認核銷' }).click()
+      await expect.poll(() => checkinRequests).toContain('QR-EXPIRED|000001')
+      await expect(page.getByText(/防偽 QR Code 已過期/)).toBeVisible()
     })
   })
 })

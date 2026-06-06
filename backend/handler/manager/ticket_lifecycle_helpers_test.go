@@ -3,10 +3,11 @@ package manager
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"ticketing-system/backend/model"
+	totputil "ticketing-system/backend/pkg/totp"
 	"ticketing-system/backend/repository"
-	eventsvc "ticketing-system/backend/service/event"
 	ticketsvc "ticketing-system/backend/service/ticket"
 	utils "ticketing-system/backend/test_utils"
 
@@ -32,12 +33,17 @@ type managerCheckinResponse struct {
 	} `json:"data"`
 }
 
-func setupManagerTicketLifecycleTest(t *testing.T) (*gorm.DB, managerApplicationUsers, func(), error) {
+type managerTicketLifecycleUsers struct {
+	Manager  model.User
+	Employee model.User
+}
+
+func setupManagerTicketLifecycleTest(t *testing.T) (*gorm.DB, managerTicketLifecycleUsers, func(), error) {
 	t.Helper()
 
 	tx, cleanup, err := utils.BeginTestTransaction(t, managerTicketLifecycleTestModels)
 	if err != nil {
-		return nil, managerApplicationUsers{}, nil, err
+		return nil, managerTicketLifecycleUsers{}, nil, err
 	}
 
 	suffix := utils.UniqueTestSuffix()
@@ -65,18 +71,17 @@ func setupManagerTicketLifecycleTest(t *testing.T) (*gorm.DB, managerApplication
 	}, true)
 	if err != nil {
 		_ = tx.Rollback()
-		return nil, managerApplicationUsers{}, nil, err
+		return nil, managerTicketLifecycleUsers{}, nil, err
 	}
 
-	return tx, managerApplicationUsers{Manager: seeded[0], Employee: seeded[1]}, cleanup, nil
+	return tx, managerTicketLifecycleUsers{Manager: seeded[0], Employee: seeded[1]}, cleanup, nil
 }
 
 func newManagerTicketLifecycleRouter(db *gorm.DB, manager model.User) *gin.Engine {
 	repos := repository.New(db, nil)
-	eventService := eventsvc.New(repos)
 	ticketService := ticketsvc.New(repos)
 
-	handler := New(eventService, ticketService, nil, nil)
+	handler := New(nil, ticketService, nil, nil)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -84,15 +89,50 @@ func newManagerTicketLifecycleRouter(db *gorm.DB, manager model.User) *gin.Engin
 		c.Set("role", "event_manager")
 		c.Next()
 	})
-	router.POST("/applications/:id/approve", handler.ApproveApplication)
 	router.POST("/checkin", handler.Checkin)
 	return router
 }
 
-func seedManagerCheckinTicket(db *gorm.DB, users managerApplicationUsers, isUsed bool) (model.Ticket, error) {
-	event, ticketType, app, err := seedManagerApplicationFixture(db, users, "approved", 1, 9)
-	if err != nil {
-		return model.Ticket{}, err
+func seedManagerCheckinTicket(db *gorm.DB, users managerTicketLifecycleUsers, isUsed bool) (model.Ticket, error) {
+	now := time.Now().UTC().Truncate(time.Second)
+	event := model.Event{
+		Title:               fmt.Sprintf("核銷測試活動 %s", utils.UniqueTestSuffix()),
+		Description:         "管理者核銷測試資料",
+		Venue:               "主會場",
+		PublishTime:         now.Add(-time.Hour),
+		StartTime:           now.Add(24 * time.Hour),
+		ApplyDeadline:       now.Add(12 * time.Hour),
+		EndTime:             now.Add(26 * time.Hour),
+		Status:              "published",
+		MaxTicketsPerPerson: 3,
+		CreatedBy:           users.Manager.ID,
+	}
+	if err := db.Create(&event).Error; err != nil {
+		return model.Ticket{}, fmt.Errorf("failed to seed check-in event: %w", err)
+	}
+
+	ticketType := model.TicketType{
+		EventID:    event.ID,
+		Name:       "一般票",
+		TotalQuota: 10,
+		Remaining:  9,
+		Version:    1,
+		CreatedAt:  now,
+	}
+	if err := db.Create(&ticketType).Error; err != nil {
+		return model.Ticket{}, fmt.Errorf("failed to seed check-in ticket type: %w", err)
+	}
+
+	app := model.Application{
+		UserID:         users.Employee.ID,
+		EventID:        event.ID,
+		TicketTypeID:   ticketType.ID,
+		Quantity:       1,
+		Status:         "approved",
+		IdempotencyKey: fmt.Sprintf("checkin-%s", utils.UniqueTestSuffix()),
+	}
+	if err := db.Create(&app).Error; err != nil {
+		return model.Ticket{}, fmt.Errorf("failed to seed check-in application: %w", err)
 	}
 
 	ticket := model.Ticket{
@@ -114,14 +154,6 @@ func decodeManagerCheckinResponse(body []byte) (managerCheckinResponse, error) {
 	return utils.DecodeJSON[managerCheckinResponse](body)
 }
 
-func managerPersistedTicketsForApplication(db *gorm.DB, appID uuid.UUID) ([]model.Ticket, error) {
-	var tickets []model.Ticket
-	if err := db.Where("application_id = ?", appID).Order("issued_at asc").Find(&tickets).Error; err != nil {
-		return nil, fmt.Errorf("failed to query generated tickets: %w", err)
-	}
-	return tickets, nil
-}
-
 func managerTicketByID(db *gorm.DB, ticketID uuid.UUID) (model.Ticket, error) {
 	var ticket model.Ticket
 	if err := db.First(&ticket, "id = ?", ticketID).Error; err != nil {
@@ -136,4 +168,8 @@ func managerTicketCheckinCount(db *gorm.DB, ticketID uuid.UUID) (int64, error) {
 		return 0, fmt.Errorf("failed to count check-ins for ticket %s: %w", ticketID, err)
 	}
 	return count, nil
+}
+
+func managerCurrentWindowDynamicQRToken(baseToken string) string {
+	return baseToken + "|" + totputil.Generate(baseToken, time.Now().Unix()/60)
 }

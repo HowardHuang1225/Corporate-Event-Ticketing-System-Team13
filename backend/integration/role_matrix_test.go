@@ -46,6 +46,12 @@ func RoleMatrixIntegration(t *testing.T, errs *utils.Errors) {
 		return
 	}
 
+	event, _, err := seedIntegrationEventWithTicketTypes(ctx.DB, ctx.Users.Manager, "published", 2, 10)
+	if err != nil {
+		errs.Add("建立角色矩陣活動資料", "%v", err)
+		return
+	}
+
 	tests := []struct {
 		name       string
 		method     string
@@ -109,6 +115,153 @@ func RoleMatrixIntegration(t *testing.T, errs *utils.Errors) {
 			path:       "/v1/events",
 			token:      employeeToken,
 			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "employee 可以查詢自己的申請列表",
+			method:     http.MethodGet,
+			path:       "/v1/applications/my",
+			token:      employeeToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "event_manager 不可查詢員工申請列表",
+			method:     http.MethodGet,
+			path:       "/v1/applications/my",
+			token:      managerToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "employee 可以查詢自己的票券列表",
+			method:     http.MethodGet,
+			path:       "/v1/tickets/my",
+			token:      employeeToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "hr 不可查詢員工票券列表",
+			method:     http.MethodGet,
+			path:       "/v1/tickets/my",
+			token:      hrToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "employee 可以查詢活動報名資格",
+			method:     http.MethodGet,
+			path:       "/v1/events/" + event.ID.String() + "/eligibility",
+			token:      employeeToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "event_manager 不可查詢員工報名資格",
+			method:     http.MethodGet,
+			path:       "/v1/events/" + event.ID.String() + "/eligibility",
+			token:      managerToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "employee 查詢不存在 queue status 會進入 handler 並回傳 NOT_FOUND",
+			method:     http.MethodGet,
+			path:       "/v1/applications/queue/missing-" + utils.UniqueTestSuffix(),
+			token:      employeeToken,
+			wantStatus: http.StatusNotFound,
+			wantCode:   "NOT_FOUND",
+		},
+		{
+			name:       "event_manager 不可查詢 employee queue status",
+			method:     http.MethodGet,
+			path:       "/v1/applications/queue/any-key",
+			token:      managerToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "event_manager 缺少核銷 payload 時會進入 handler validation",
+			method:     http.MethodPost,
+			path:       "/v1/checkin",
+			token:      managerToken,
+			body:       gin.H{},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_ERROR",
+		},
+		{
+			name:       "employee 不可核銷票券",
+			method:     http.MethodPost,
+			path:       "/v1/checkin",
+			token:      employeeToken,
+			body:       gin.H{},
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "event_manager 可以查詢核銷紀錄",
+			method:     http.MethodGet,
+			path:       "/v1/checkins",
+			token:      managerToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "hr 不可查詢核銷紀錄",
+			method:     http.MethodGet,
+			path:       "/v1/checkins",
+			token:      hrToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "event_manager 缺少上傳檔案時會進入 handler validation",
+			method:     http.MethodPost,
+			path:       "/v1/upload",
+			token:      managerToken,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_ERROR",
+		},
+		{
+			name:       "employee 不可上傳活動檔案",
+			method:     http.MethodPost,
+			path:       "/v1/upload",
+			token:      employeeToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "event_manager 可以查詢單一活動統計",
+			method:     http.MethodGet,
+			path:       "/v1/reports/events/" + event.ID.String() + "/stats",
+			token:      managerToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "hr 可以查詢單一活動統計",
+			method:     http.MethodGet,
+			path:       "/v1/reports/events/" + event.ID.String() + "/stats",
+			token:      hrToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "employee 不可查詢活動統計",
+			method:     http.MethodGet,
+			path:       "/v1/reports/events/" + event.ID.String() + "/stats",
+			token:      employeeToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
+		},
+		{
+			name:       "hr 可以匯出單一活動 CSV",
+			method:     http.MethodGet,
+			path:       "/v1/reports/events/" + event.ID.String() + "/export",
+			token:      hrToken,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "event_manager 不可匯出 HR CSV",
+			method:     http.MethodGet,
+			path:       "/v1/reports/events/" + event.ID.String() + "/export",
+			token:      managerToken,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "FORBIDDEN",
 		},
 	}
 

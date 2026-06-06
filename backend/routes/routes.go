@@ -9,12 +9,12 @@ import (
 	hrhandler "ticketing-system/backend/handler/hr"
 	managerhandler "ticketing-system/backend/handler/manager"
 	"ticketing-system/backend/middleware"
+	"ticketing-system/backend/pkg/storage"
 	"ticketing-system/backend/repository"
 	authsvc "ticketing-system/backend/service/auth"
 	eventsvc "ticketing-system/backend/service/event"
 	reportsvc "ticketing-system/backend/service/report"
 	ticketsvc "ticketing-system/backend/service/ticket"
-	"ticketing-system/backend/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -77,10 +77,6 @@ func Register(router *gin.Engine, deps Dependencies) {
 	api.GET("/applications/queue/:idempotency_key", middleware.RequireRole("employee"), employeeHandler.QueueStatus)
 	api.GET("/applications/my", middleware.RequireRole("employee"), employeeHandler.MyApplications)
 	api.POST("/applications/:id/cancel", middleware.RequireRole("employee"), employeeHandler.CancelApplication)
-
-	api.GET("/applications", middleware.RequireRole("event_manager"), managerHandler.ListApplications)
-	api.POST("/applications/:id/approve", middleware.RequireRole("event_manager"), managerHandler.ApproveApplication)
-	api.POST("/applications/:id/reject", middleware.RequireRole("event_manager"), managerHandler.RejectApplication)
 
 	api.GET("/tickets/my", middleware.RequireRole("employee"), employeeHandler.MyTickets)
 	api.POST("/tickets/:id/cancel", middleware.RequireRole("employee"), employeeHandler.CancelTicket)

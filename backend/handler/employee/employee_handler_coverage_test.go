@@ -1,6 +1,7 @@
 package employee
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,6 +48,10 @@ func TestEmployeeHandlerCoverageRoutes(t *testing.T) {
 		{
 			Description: "測試員工送出不合法申請 payload 會回傳 VALIDATION_ERROR",
 			Target:      ApplyRejectsInvalidPayloadThroughHandler,
+		},
+		{
+			Description: "測試員工申請在 queue mode 會回傳 202 並可查詢排隊狀態",
+			Target:      ApplyReturnsAcceptedAndQueueStatusThroughHandler,
 		},
 	}
 
@@ -296,6 +301,108 @@ func ApplyRejectsInvalidPayloadThroughHandler(t *testing.T, errs *utils.Errors) 
 	utils.PrintTestProgress("==================================================\n\n")
 }
 
+func ApplyReturnsAcceptedAndQueueStatusThroughHandler(t *testing.T, errs *utils.Errors) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	utils.PrintTestProgress("員工 queue 申請：確認 handler 在 queue mode 會回傳 202 並寫入 Redis queue status。\n")
+	utils.PrintTestProgress("==================================================\n")
+
+	tx, users, cleanup, err := setupEmployeeEventTest(t)
+	if err != nil {
+		errs.Add("準備 queue 申請 handler 測試資料", "%v", err)
+		return
+	}
+	t.Cleanup(cleanup)
+
+	redisClient, err := openEmployeeTestRedis(t)
+	if err != nil {
+		errs.Add("準備 queue 申請 Redis", "%v", err)
+		return
+	}
+
+	event, err := seedEmployeeEventWithTickets(tx, users.Manager, "published", "Tainan")
+	if err != nil {
+		errs.Add("建立 queue 申請活動", "%v", err)
+		return
+	}
+	ticketType := event.TicketTypes[0]
+	cleanupEmployeeInventoryKeys(t, redisClient, ticketType.ID.String())
+
+	stream := "ticket:test:employee-handler:" + utils.UniqueTestSuffix()
+	idempotencyKey := "queue-handler-" + utils.UniqueTestSuffix()
+	queueKeys := []string{
+		stream,
+		"queue:status:" + users.Employee.ID.String() + ":" + idempotencyKey,
+		"queue:reservation:" + users.Employee.ID.String() + ":" + idempotencyKey,
+		"queue:user_event_reserved:" + users.Employee.ID.String() + ":" + event.ID.String(),
+	}
+	redisClient.Del(context.Background(), queueKeys...)
+	t.Cleanup(func() {
+		redisClient.Del(context.Background(), queueKeys...)
+	})
+
+	t.Setenv("TICKET_QUEUE_ENABLED", "true")
+	t.Setenv("TICKET_QUEUE_STREAM", stream)
+	t.Setenv("TICKET_QUEUE_MAX_WAITING", "10")
+	t.Setenv("TICKET_QUEUE_RESERVATION_TTL_SECONDS", "120")
+
+	router := newEmployeeCoverageQueueRouter(tx, redisClient, users.Employee, true)
+	payload := gin.H{
+		"event_id":        event.ID.String(),
+		"ticket_type_id":  ticketType.ID.String(),
+		"quantity":        1,
+		"idempotency_key": idempotencyKey,
+	}
+
+	resp := utils.PerformJSON(router, http.MethodPost, "/applications", payload)
+	if resp.Code != http.StatusAccepted {
+		errs.Add("queue mode 送出申請", "expected 202, got %d body=%s", resp.Code, resp.Body.String())
+		return
+	}
+	body, err := decodeEmployeeApplicationResponse(resp.Body.Bytes())
+	if err != nil {
+		errs.Add("解析 queue 申請回應", "%v", err)
+		return
+	}
+	if !body.Success || body.Data.Status != "queued" || body.Data.IdempotencyKey != idempotencyKey || body.Data.Quantity != 1 {
+		errs.Add("檢查 queue 申請回應", "回應不符預期：%+v", body)
+		return
+	}
+
+	statusResp := performEmployeeGet(router, "/applications/queue/"+idempotencyKey)
+	if statusResp.Code != http.StatusOK {
+		errs.Add("查詢 queue 申請狀態", "expected 200, got %d body=%s", statusResp.Code, statusResp.Body.String())
+		return
+	}
+	statusBody, err := decodeEmployeeQueueStatusResponse(statusResp.Body.Bytes())
+	if err != nil {
+		errs.Add("解析 queue status 回應", "%v", err)
+		return
+	}
+	if !statusBody.Success || statusBody.Data.Status != "queued" || statusBody.Data.EventID != event.ID.String() || statusBody.Data.TicketTypeID != ticketType.ID.String() {
+		errs.Add("檢查 queue status 回應", "回應不符預期：%+v", statusBody)
+		return
+	}
+
+	duplicate := utils.PerformJSON(router, http.MethodPost, "/applications", payload)
+	if duplicate.Code != http.StatusAccepted {
+		errs.Add("重複 queue 申請", "expected 202, got %d body=%s", duplicate.Code, duplicate.Body.String())
+		return
+	}
+	duplicateBody, err := decodeEmployeeApplicationResponse(duplicate.Body.Bytes())
+	if err != nil {
+		errs.Add("解析重複 queue 申請回應", "%v", err)
+		return
+	}
+	if duplicateBody.Data.ID != body.Data.ID || duplicateBody.Data.Status != "queued" {
+		errs.Add("檢查重複 queue 申請回應", "預期同一筆 queue app，第一次 %+v，第二次 %+v", body.Data, duplicateBody.Data)
+		return
+	}
+
+	utils.PrintTestProgress("==================================================\n\n")
+}
+
 func newEmployeeCoverageRouter(db *gorm.DB, redisClient *redis.Client, user model.User, withUser bool) *gin.Engine {
 	repos := repository.New(db, redisClient)
 	handler := New(eventsvc.New(repos), ticketsvc.New(repos))
@@ -312,6 +419,25 @@ func newEmployeeCoverageRouter(db *gorm.DB, redisClient *redis.Client, user mode
 	router.GET("/applications/queue/:idempotency_key", handler.QueueStatus)
 	router.DELETE("/applications/:id", handler.CancelApplication)
 	router.DELETE("/tickets/:id", handler.CancelTicket)
+	return router
+}
+
+func newEmployeeCoverageQueueRouter(db *gorm.DB, redisClient *redis.Client, user model.User, withUser bool) *gin.Engine {
+	repos := repository.New(db, redisClient)
+	ticketService := ticketsvc.New(repos)
+	ticketService.EnableQueueFromEnv()
+	handler := New(eventsvc.New(repos), ticketService)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		if withUser {
+			c.Set("user_id", user.ID.String())
+			c.Set("role", "employee")
+		}
+		c.Next()
+	})
+	router.POST("/applications", handler.Apply)
+	router.GET("/applications/queue/:idempotency_key", handler.QueueStatus)
 	return router
 }
 

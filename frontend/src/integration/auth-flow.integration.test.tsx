@@ -147,6 +147,36 @@ describe('登入與授權整合流程', () => {
     expect(api.get).toHaveBeenCalledWith('/auth/me')
   })
 
+  it('既有 token 失效時會清除 token 並導向登入頁', async () => {
+    console.info('確認既有 token 失效時 AuthProvider 會清除登入狀態並回到登入頁')
+    localStorage.setItem('token', 'expired-token')
+
+    const { api } = await renderApp('/events', ({ get }) => {
+      get.mockImplementation((url: string) => {
+        if (url === '/auth/me') {
+          return Promise.reject({
+            response: {
+              status: 401,
+              data: {
+                error: {
+                  code: 'UNAUTHORIZED',
+                  message: 'Token expired',
+                },
+              },
+            },
+          })
+        }
+        return Promise.reject(new Error(`失效 token 流程不應呼叫其他 API：${url}`))
+      })
+    })
+
+    await waitFor(() => expect(window.location.pathname).toBe('/login'))
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(screen.getByRole('button', { name: '登入' })).toBeInTheDocument()
+    expect(screen.queryByText('年度家庭日')).not.toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/auth/me')
+  })
+
   it('已登入使用者登出後會清除 token 並回到登入頁', async () => {
     console.info('確認 App、AuthProvider 與 Layout 串起來的登出流程')
     localStorage.setItem('token', 'employee-token')

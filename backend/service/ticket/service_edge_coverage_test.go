@@ -256,7 +256,8 @@ func TicketServiceCheckinRejectsMissingAndInvalidTokens(t *testing.T, errs *util
 		return
 	}
 
-	_, err = service.Checkin(CheckinRequest{QRToken: uuid.New().String()}, users.Manager.ID)
+	missingDynamicQRToken := ticketServiceCurrentWindowDynamicQRToken(uuid.New().String())
+	_, err = service.Checkin(CheckinRequest{QRToken: missingDynamicQRToken}, users.Manager.ID)
 	if assertErr := assertTicketServiceAppError(err, http.StatusNotFound, "NOT_FOUND"); assertErr != nil {
 		errs.Add("核銷不存在 QR token", "%v", assertErr)
 		return

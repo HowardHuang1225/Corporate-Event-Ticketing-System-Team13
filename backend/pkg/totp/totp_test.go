@@ -1,6 +1,7 @@
 package totp
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -49,4 +50,26 @@ func TestVerifyAcceptsCurrentAdjacentWindowAndRejectsInvalidOTP(t *testing.T) {
 	if Verify(secret, "000000", windowSeconds) {
 		t.Fatal("Verify() should reject an invalid OTP")
 	}
+}
+
+func TestVerifyRejectsExpiredPreviousWindowOTP(t *testing.T) {
+	windowSeconds := int64(60)
+	currentCounter := time.Now().Unix() / windowSeconds
+
+	for i := 0; i < 100; i++ {
+		secret := fmt.Sprintf("expired-window-secret-%d", i)
+		expiredOTP := Generate(secret, currentCounter-2)
+		if expiredOTP == Generate(secret, currentCounter-1) ||
+			expiredOTP == Generate(secret, currentCounter) ||
+			expiredOTP == Generate(secret, currentCounter+1) {
+			continue
+		}
+
+		if Verify(secret, expiredOTP, windowSeconds) {
+			t.Fatal("Verify() should reject an OTP older than the allowed adjacent window")
+		}
+		return
+	}
+
+	t.Fatal("could not find a non-colliding expired OTP test secret")
 }

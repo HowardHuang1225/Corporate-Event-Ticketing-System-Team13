@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import api from '../api/client'
 import { resetAppQueryClient } from '../test/test-utils'
@@ -129,6 +129,10 @@ describe('員工票券整合流程', () => {
     generateTOTPMock.mockResolvedValue('123456')
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('員工可從活動列表進入詳情，送出申請後在我的票券看到自動核准票券', async () => {
     console.info('確認員工活動申請到自動核准票券的 App 層級整合流程')
     localStorage.setItem('token', 'employee-integration-token')
@@ -168,6 +172,39 @@ describe('員工票券整合流程', () => {
     await userEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
     expect(await screen.findByText('QR-AUTO-APPROVED-001|123456')).toBeInTheDocument()
     expect(generateTOTPMock).toHaveBeenCalledWith('QR-AUTO-APPROVED-001', 60)
+  })
+
+  it('員工我的票券會在下一個 60 秒時間窗刷新動態 QR token', async () => {
+    console.info('確認 App 層級我的票券流程會刷新動態 QR')
+    window.history.pushState({}, '', '/my-tickets')
+    localStorage.setItem('token', 'employee-integration-token')
+    generateTOTPMock.mockResolvedValueOnce('123456').mockResolvedValueOnce('654321')
+    configureEmployeeApi()
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '我的票券' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /電子票券/ })).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2099-07-01T01:00:00.000Z'))
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示 QR' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-AUTO-APPROVED-001|123456')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('QR-AUTO-APPROVED-001|654321')).toBeInTheDocument()
+    expect(screen.queryByText('QR-AUTO-APPROVED-001|123456')).not.toBeInTheDocument()
+    expect(generateTOTPMock).toHaveBeenCalledTimes(2)
   })
 
   it('員工可在我的票券確認退票，並刷新票券與申請資料', async () => {

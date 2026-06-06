@@ -30,6 +30,7 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 - 未登入使用者進入 `/events` 會被 `ProtectedRoute` 導向 `/login`
 - 從 `/login` 登入成功後會儲存 token，進入 `/events`，並載入活動列表
 - localStorage 已有 token 時，`AuthProvider` 會呼叫 `/auth/me` 還原使用者
+- localStorage 已有 token 但 `/auth/me` 回 401 時，會清除失效 token、導回 `/login`，且不殘留原頁面內容
 - 還原 event manager 身份後，layout 會顯示管理者導覽，例如「活動管理」與「現場核銷」
 - 已登入使用者按下「登出」後會清除 token，回到 `/login`，並移除原頁面內容
 
@@ -46,6 +47,7 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 - 申請成功後進入「我的票券」
 - 驗證自動核准的申請記錄、未使用電子票券與動態 QR token 會顯示
 - QR token 以 `qr_token|otp` 格式呈現，integration test 會 mock `generateTOTP` 讓動態碼固定
+- 以 fake timers 驗證「我的票券」頁在下一個 60 秒時間窗會重新產生並替換動態 QR token
 - 員工在「我的票券」確認退票後，會呼叫 `/tickets/:id/cancel`
 - 退票成功後會重新查詢票券資料，確保 React Query invalidate/refetch 流程可串起來
 
@@ -87,20 +89,14 @@ API 邊界仍 mock 在 `frontend/src/api/client.ts`，不直接呼叫真實後�
 
 | 指標 | 覆蓋率 |
 | --- | ---: |
-| Statements | 88.13% |
-| Branches | 73.08% |
-| Functions | 83.15% |
-| Lines | 88.21% |
+| Statements | 90.89% |
+| Branches | 80.88% |
+| Functions | 96.24% |
+| Lines | 91.57% |
 
-因為員工申請已改為自動核准，legacy `Applications.tsx` 申請審核頁已移除，coverage 不再計入 manager 審核流程。
+因為員工申請已改為自動核准，legacy manager 申請審核頁與 unit test 已移除，integration test 仍不應再驗證 manager approve/reject 審核流程。
 
 ## 後續建議補測
-
-### 暫不補
-
-1. Auth 失效 token 流程
-
-   目前先不寫。這個流程是從受保護頁面進入，localStorage 有 token，但 `/auth/me` 失敗，最後應移除 token 並回到登入頁。
 
 ### 可再補
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"ticketing-system/backend/model"
+	totputil "ticketing-system/backend/pkg/totp"
 	"ticketing-system/backend/repository"
 	"ticketing-system/backend/service/apperror"
 	utils "ticketing-system/backend/test_utils"
@@ -254,6 +255,37 @@ func ticketServiceCheckinCount(db *gorm.DB, ticketID uuid.UUID) (int64, error) {
 		return 0, fmt.Errorf("查詢核銷紀錄數量失敗：%w", err)
 	}
 	return count, nil
+}
+
+func ticketServicePreviousWindowDynamicQRToken(baseToken string) string {
+	now := time.Now()
+	if seconds := now.Unix() % 60; seconds >= 58 {
+		time.Sleep(time.Duration(61-seconds) * time.Second)
+		now = time.Now()
+	}
+	return baseToken + "|" + totputil.Generate(baseToken, now.Unix()/60-1)
+}
+
+func ticketServiceCurrentWindowDynamicQRToken(baseToken string) string {
+	return baseToken + "|" + totputil.Generate(baseToken, time.Now().Unix()/60)
+}
+
+func ticketServiceExpiredWindowDynamicQRToken(baseToken string) string {
+	currentCounter := time.Now().Unix() / 60
+	allowed := map[string]bool{
+		totputil.Generate(baseToken, currentCounter-1): true,
+		totputil.Generate(baseToken, currentCounter):   true,
+		totputil.Generate(baseToken, currentCounter+1): true,
+	}
+
+	for offset := int64(2); offset < 20; offset++ {
+		otp := totputil.Generate(baseToken, currentCounter-offset)
+		if !allowed[otp] {
+			return baseToken + "|" + otp
+		}
+	}
+
+	panic("could not find a non-colliding expired dynamic QR token")
 }
 
 func assertTicketServiceAppErrorCode(err error, wantCode string) error {
