@@ -462,7 +462,7 @@ redis_inventory=5596
 - 兩個 backend 都可以接 API request，也都可以跑 queue worker。
 - request hot path 主要打 Redis，不再每次先去 PostgreSQL 查剩餘票數。
 - Redis 負責 semaphore reservation 和 stream enqueue。
-- PostgreSQL 在 worker 階段負責最終落庫，不在 hot path 扣 `ticket_types.remaining`。
+- PostgreSQL 在 worker 階段負責最終落庫；同一個 transaction 會建立 application、扣 `ticket_types.remaining`、建立 tickets。
 - frontend polling 還是經過 backend，再由 backend 讀 Redis queue status。
 
 ```mermaid
@@ -496,7 +496,7 @@ sequenceDiagram
     end
 
     W->>R: XREADGROUP ticket application jobs
-    W->>DB: Create application and tickets
+    W->>DB: Create application, deduct remaining, create tickets
     W->>R: Update queue status, ACK and delete job
 
     FE->>API: Poll queue status
@@ -512,7 +512,7 @@ flowchart LR
     B --> C[Redis semaphore]
     C --> D[Redis stream queue]
     D --> E[Workers on both backends]
-    E --> F[PostgreSQL applications and tickets]
+    E --> F[PostgreSQL applications, remaining, tickets]
     B -. poll status .-> C
 ```
 
@@ -552,7 +552,7 @@ flowchart LR
    - deadline 尚未過
    - ticket type 屬於 event
    - DB 中此 user/event 的已發票與 pending 數沒有超過限制
-6. 建立 application 與 ticket rows。
+6. 同一個 transaction 內建立 application、扣 `ticket_types.remaining`、建立 ticket rows。
 7. 成功後：
    - 釋放 Redis per-user reservation
    - queue status 改成 `approved`
@@ -567,9 +567,10 @@ flowchart LR
 
 ## 11. 目前仍要注意的點
 
-1. `ticket_types.remaining` 在 queue 模式下不再即時扣。
-   - 即時可售數以 Redis inventory 為準。
-   - 若後台或報表要看 DB remaining，需要補 batch sync 或 reconciliation。
+1. queue 模式下有兩個庫存視角。
+   - hot path 的可售判斷以 Redis inventory 為準，避免所有 request 先打 PostgreSQL 搶同一列。
+   - worker 成功落庫時會同步扣 `ticket_types.remaining`，所以 DB remaining 應該在 worker drain 完後和 Redis inventory 對齊。
+   - 如果壓測後看到 Redis inventory 是 `0` 但 DB remaining 沒扣，通常代表 backend container 還是舊 image，需要 rebuild/restart 後再測。
 
 2. 32000 VUs 看到的第一個非 100% 主要是 client timeout / Docker EOF。
    - 本地 Docker Desktop 不一定能代表正式環境。
@@ -577,4 +578,8 @@ flowchart LR
 
 3. request hot path 已經避免每次打 PostgreSQL 查庫存。
    - 但 cold cache 初始化仍會查 PostgreSQL 一次。
-   - worker 最終落庫仍會受 PostgreSQL insert throughput 影響。
+   - worker 最終落庫仍會受 PostgreSQL transaction、扣 DB remaining、insert applications/tickets 的 throughput 影響。
+
+4. worker 失敗時會把 Redis reservation 補回。
+   - 如果 DB transaction 失敗，流程會 return Redis inventory、釋放 per-user reservation，並把 queue status 改成 `failed`。
+   - 如果 worker 卡住或容器中斷，仍需要靠 pending/stream 監控或人工 reconciliation 確認是否有未處理 job。

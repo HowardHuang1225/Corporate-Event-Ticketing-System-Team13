@@ -64,6 +64,8 @@ Optional overrides:
 TOTAL=28000 SHARDS_PER_BACKEND=7 HTTP_TIMEOUT=30s bash load-test/run_wsl_28000.sh
 ```
 
+要測試超賣的話，可以去修改 load-test/run_wsl_28000.sh 裡面的 TOTAL_QUOTA (line 56)
+
 ## 6. Read Results
 
 ```bash
