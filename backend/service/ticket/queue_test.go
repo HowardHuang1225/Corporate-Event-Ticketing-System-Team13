@@ -651,6 +651,7 @@ func cleanupTicketQueueKeys(t *testing.T, redisClient *redis.Client, userID stri
 		queueUserEventReservationKey(userID, eventID),
 		"inventory:" + ticketTypeID,
 		"inventory_loaded:" + ticketTypeID,
+		queueTicketTypeMetaKey(ticketTypeID),
 		"lock:init_lock:" + ticketTypeID,
 		stream,
 	}

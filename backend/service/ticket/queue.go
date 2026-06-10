@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"ticketing-system/backend/model"
-	"ticketing-system/backend/pkg"
 	"ticketing-system/backend/service/apperror"
 
 	"github.com/google/uuid"
@@ -108,13 +107,6 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 		return ApplyResult{}, apperror.Validation("idempotency_key is required")
 	}
 
-	var existing model.Application
-	if result := s.db.Where("idempotency_key = ? AND user_id = ?", req.IdempotencyKey, userID.String()).Limit(1).Find(&existing); result.Error != nil {
-		return ApplyResult{}, result.Error
-	} else if result.RowsAffected > 0 {
-		return ApplyResult{Application: existing, Created: false}, nil
-	}
-
 	ctx := context.Background()
 	statusKey := queueStatusKey(userID.String(), req.IdempotencyKey)
 	reservationKey := queueReservationKey(userID.String(), req.IdempotencyKey)
@@ -130,36 +122,6 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 		}
 	}
 
-	var event model.Event
-	if err := s.db.First(&event, "id = ?", eventID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ApplyResult{}, apperror.NotFound("Event not found")
-		}
-		return ApplyResult{}, apperror.Busy("Database system busy")
-	}
-	if event.Status != "published" {
-		return ApplyResult{}, apperror.New(400, "EVENT_NOT_AVAILABLE", "Event is not accepting applications")
-	}
-	if time.Now().After(event.ApplyDeadline) {
-		return ApplyResult{}, apperror.New(400, "APPLY_DEADLINE_PASSED", "Application deadline has passed")
-	}
-
-	var issuedCount int64
-	if err := s.db.Model(&model.Ticket{}).Where("user_id = ? AND event_id = ?", userID.String(), eventID.String()).Count(&issuedCount).Error; err != nil {
-		return ApplyResult{}, apperror.Busy("Database system busy")
-	}
-	var pendingCount int
-	if err := s.db.Model(&model.Application{}).
-		Where("user_id = ? AND event_id = ? AND status IN ?", userID.String(), eventID.String(), []string{"pending", "queued", "processing"}).
-		Select("COALESCE(SUM(quantity), 0)").
-		Scan(&pendingCount).Error; err != nil {
-		return ApplyResult{}, apperror.Busy("Database system busy")
-	}
-	remainingAllowance := event.MaxTicketsPerPerson - int(issuedCount) - pendingCount
-	if req.Quantity > remainingAllowance {
-		return ApplyResult{}, apperror.New(400, "EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", int(issuedCount)+pendingCount, event.MaxTicketsPerPerson, remainingAllowance))
-	}
-
 	if err := s.ensureInventoryLoaded(ctx, ticketTypeID, req.TicketTypeID); err != nil {
 		return ApplyResult{}, err
 	}
@@ -168,12 +130,14 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	inventoryKey := "inventory:" + req.TicketTypeID
 	userEventReservationKey := queueUserEventReservationKey(userID.String(), req.EventID)
+	metaKey := queueTicketTypeMetaKey(req.TicketTypeID)
 	status, err := s.redis.Eval(ctx, queueReservationLua, []string{
 		inventoryKey,
 		reservationKey,
 		s.queue.Stream,
 		statusKey,
 		userEventReservationKey,
+		metaKey,
 	},
 		req.Quantity,
 		int(s.queue.ReservationTTL.Seconds()),
@@ -183,7 +147,7 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 		req.TicketTypeID,
 		req.IdempotencyKey,
 		now,
-		remainingAllowance,
+		time.Now().UTC().Unix(),
 	).Text()
 	if err != nil {
 		return ApplyResult{}, apperror.New(503, "QUEUE_BUSY", "Queue system busy")
@@ -208,6 +172,12 @@ func (s *Service) ApplyQueued(userID uuid.UUID, req ApplyRequest) (ApplyResult, 
 		return ApplyResult{}, apperror.Conflict("TICKET_SOLD_OUT", "Not enough tickets remaining")
 	case "EXCEEDS_MAX_TICKETS":
 		return ApplyResult{}, apperror.New(400, "EXCEEDS_MAX_TICKETS", "Ticket limit exceeded")
+	case "EVENT_NOT_AVAILABLE":
+		return ApplyResult{}, apperror.New(400, "EVENT_NOT_AVAILABLE", "Event is not accepting applications")
+	case "APPLY_DEADLINE_PASSED":
+		return ApplyResult{}, apperror.New(400, "APPLY_DEADLINE_PASSED", "Application deadline has passed")
+	case "TICKET_TYPE_MISMATCH":
+		return ApplyResult{}, apperror.Validation("ticket_type_id does not belong to event_id")
 	default:
 		return ApplyResult{}, apperror.New(503, "QUEUE_BUSY", "Queue system busy")
 	}
@@ -292,6 +262,13 @@ func (s *Service) queueWorker(ctx context.Context, consumer string) {
 			if errors.Is(err, redis.Nil) {
 				continue
 			}
+			if strings.Contains(err.Error(), "NOGROUP") {
+				if groupErr := s.ensureQueueGroup(ctx); groupErr != nil {
+					log.Printf("ticket queue group reinitialization failed: %v", groupErr)
+				}
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			log.Printf("ticket queue read error: %v", err)
 			time.Sleep(time.Second)
 			continue
@@ -308,7 +285,7 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 	job, err := queueJobFromMessage(msg)
 	if err != nil {
 		log.Printf("invalid ticket queue message %s: %v", msg.ID, err)
-		_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, msg.ID).Err()
+		s.ackAndDeleteQueueMessage(ctx, msg.ID)
 		return
 	}
 	statusKey := queueStatusKey(job.UserID.String(), job.IdempotencyKey)
@@ -338,7 +315,7 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 			"updated_at": time.Now().UTC().Format(time.RFC3339Nano),
 		}).Err()
 		_ = s.redis.Expire(ctx, statusKey, s.queue.StatusTTL).Err()
-		_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, msg.ID).Err()
+		s.ackAndDeleteQueueMessage(ctx, msg.ID)
 		log.Printf("ticket queue job failed id=%s code=%s err=%v", msg.ID, code, err)
 		return
 	}
@@ -349,12 +326,17 @@ func (s *Service) processQueueMessage(ctx context.Context, msg redis.XMessage) {
 		"updated_at":     time.Now().UTC().Format(time.RFC3339Nano),
 	}).Err()
 	_ = s.redis.Expire(ctx, statusKey, s.queue.StatusTTL).Err()
-	_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, msg.ID).Err()
+	s.ackAndDeleteQueueMessage(ctx, msg.ID)
 	s.invalidateMyApplicationsCache(ctx, job.UserID.String())
 	s.invalidateMyTicketsCache(ctx, job.UserID.String())
 	if created {
 		log.Printf("ticket queue job approved app=%s stream_id=%s", app.ID.String(), msg.ID)
 	}
+}
+
+func (s *Service) ackAndDeleteQueueMessage(ctx context.Context, messageID string) {
+	_ = s.redis.XAck(ctx, s.queue.Stream, s.queue.Group, messageID).Err()
+	_ = s.redis.XDel(ctx, s.queue.Stream, messageID).Err()
 }
 
 type queueJob struct {
@@ -442,18 +424,15 @@ func (s *Service) createApplicationAfterReservation(userID uuid.UUID, eventID uu
 		if quantity > remainingAllowance {
 			return apperror.New(400, "EXCEEDS_MAX_TICKETS", fmt.Sprintf("You have already applied for %d tickets. The limit is %d. You can only apply for %d more.", currentTotal, event.MaxTicketsPerPerson, remainingAllowance))
 		}
-		res := tx.Model(&model.TicketType{}).
-			Where("id = ? AND event_id = ? AND remaining >= ?", ticketTypeID, eventID, quantity).
-			Updates(map[string]interface{}{
-				"remaining": gorm.Expr("remaining - ?", quantity),
-				"version":   gorm.Expr("version + 1"),
-			})
-		if res.Error != nil {
-			return res.Error
+
+		var ticketType model.TicketType
+		if err := tx.Select("id").First(&ticketType, "id = ? AND event_id = ?", ticketTypeID, eventID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return apperror.NotFound("Ticket type not found")
+			}
+			return err
 		}
-		if res.RowsAffected == 0 {
-			return apperror.Conflict("TICKET_SOLD_OUT", "Not enough tickets remaining")
-		}
+
 		app := model.Application{
 			UserID:         userID,
 			EventID:        eventID,
@@ -470,17 +449,25 @@ func (s *Service) createApplicationAfterReservation(userID uuid.UUID, eventID uu
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			if err := tx.Model(&model.TicketType{}).Where("id = ?", ticketTypeID).Updates(map[string]interface{}{
-				"remaining": gorm.Expr("remaining + ?", quantity),
-				"version":   gorm.Expr("version + 1"),
-			}).Error; err != nil {
-				return err
-			}
 			if err := tx.Where("idempotency_key = ? AND user_id = ?", idempotencyKey, userID.String()).First(&existingApp).Error; err != nil {
 				return err
 			}
 			return nil
 		}
+
+		res := tx.Model(&model.TicketType{}).
+			Where("id = ? AND event_id = ? AND remaining >= ?", ticketTypeID, eventID, quantity).
+			Updates(map[string]interface{}{
+				"remaining": gorm.Expr("remaining - ?", quantity),
+				"version":   gorm.Expr("version + 1"),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apperror.Conflict("TICKET_SOLD_OUT", "Not enough tickets remaining")
+		}
+
 		for i := 0; i < app.Quantity; i++ {
 			ticket := model.Ticket{
 				ApplicationID: app.ID,
@@ -510,21 +497,23 @@ func (s *Service) createApplicationAfterReservation(userID uuid.UUID, eventID uu
 func (s *Service) ensureInventoryLoaded(ctx context.Context, ticketTypeID uuid.UUID, ticketTypeIDString string) error {
 	loadedKey := "inventory_loaded:" + ticketTypeIDString
 	inventoryKey := "inventory:" + ticketTypeIDString
-	if s.redis.Exists(ctx, loadedKey).Val() != 0 {
+	metaKey := queueTicketTypeMetaKey(ticketTypeIDString)
+	if s.redis.Exists(ctx, loadedKey).Val() != 0 && s.redis.Exists(ctx, metaKey).Val() != 0 {
 		return nil
 	}
 	lockKey := "init_lock:" + ticketTypeIDString
-	ok, err := pkg.AcquireLock(ctx, s.redis, lockKey, 5*time.Second, 60*time.Second)
+	ok, err := s.tryAcquireInventoryInitLock(ctx, lockKey)
 	if err != nil {
 		return apperror.New(503, "BUSY", "Inventory system busy")
 	}
 	if !ok {
-		return apperror.New(503, "BUSY", "Inventory system busy")
+		return s.waitForInventoryLoaded(ctx, loadedKey, metaKey)
 	}
-	defer pkg.ReleaseLock(ctx, s.redis, lockKey)
-	if s.redis.Exists(ctx, loadedKey).Val() != 0 {
+	defer s.redis.Del(ctx, "lock:"+lockKey)
+	if s.redis.Exists(ctx, loadedKey).Val() != 0 && s.redis.Exists(ctx, metaKey).Val() != 0 {
 		return nil
 	}
+
 	var ticketType model.TicketType
 	if err := s.db.First(&ticketType, "id = ?", ticketTypeID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -532,13 +521,58 @@ func (s *Service) ensureInventoryLoaded(ctx context.Context, ticketTypeID uuid.U
 		}
 		return apperror.Busy("Database system busy")
 	}
+
+	var event model.Event
+	if err := s.db.First(&event, "id = ?", ticketType.EventID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperror.NotFound("Event not found")
+		}
+		return apperror.Busy("Database system busy")
+	}
+
 	pipe := s.redis.TxPipeline()
 	pipe.Set(ctx, inventoryKey, ticketType.Remaining, 24*time.Hour)
+	pipe.HSet(ctx, metaKey, map[string]any{
+		"event_id":               event.ID.String(),
+		"event_status":           event.Status,
+		"apply_deadline_unix":    event.ApplyDeadline.UTC().Unix(),
+		"max_tickets_per_person": event.MaxTicketsPerPerson,
+	})
+	pipe.Expire(ctx, metaKey, 24*time.Hour)
 	pipe.Set(ctx, loadedKey, "1", 24*time.Hour)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return apperror.New(503, "BUSY", "Inventory system busy")
 	}
 	return nil
+}
+
+func (s *Service) tryAcquireInventoryInitLock(ctx context.Context, lockKey string) (bool, error) {
+	_, err := s.redis.SetArgs(ctx, "lock:"+lockKey, 1, redis.SetArgs{
+		Mode: "NX",
+		TTL:  5 * time.Second,
+	}).Result()
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (s *Service) waitForInventoryLoaded(ctx context.Context, loadedKey string, metaKey string) error {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.redis.Exists(ctx, loadedKey).Val() != 0 && s.redis.Exists(ctx, metaKey).Val() != 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return apperror.New(503, "BUSY", "Inventory system busy")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return apperror.New(503, "BUSY", "Inventory system busy")
 }
 
 func queuedApplicationFromStatus(userID uuid.UUID, eventID uuid.UUID, ticketTypeID uuid.UUID, req ApplyRequest, fields map[string]string) model.Application {
@@ -588,6 +622,10 @@ func queueUserEventReservationKey(userID string, eventID string) string {
 	return "queue:user_event_reserved:" + userID + ":" + eventID
 }
 
+func queueTicketTypeMetaKey(ticketTypeID string) string {
+	return "queue:ticket_type_meta:" + ticketTypeID
+}
+
 func errorCodeAndMessage(err error) (string, string) {
 	var appErr *apperror.Error
 	if errors.As(err, &appErr) {
@@ -602,6 +640,7 @@ local reservationKey = KEYS[2]
 local streamKey = KEYS[3]
 local statusKey = KEYS[4]
 local userEventReservationKey = KEYS[5]
+local metaKey = KEYS[6]
 
 local quantity = tonumber(ARGV[1])
 local ttl = tonumber(ARGV[2])
@@ -611,14 +650,34 @@ local eventID = ARGV[5]
 local ticketTypeID = ARGV[6]
 local idempotencyKey = ARGV[7]
 local queuedAt = ARGV[8]
-local remainingAllowance = tonumber(ARGV[9])
+local nowUnix = tonumber(ARGV[9])
 
 if redis.call('EXISTS', reservationKey) == 1 then
   return 'DUPLICATE'
 end
 
+local metaEventID = redis.call('HGET', metaKey, 'event_id')
+if metaEventID ~= eventID then
+  return 'TICKET_TYPE_MISMATCH'
+end
+
+local eventStatus = redis.call('HGET', metaKey, 'event_status')
+if eventStatus ~= 'published' then
+  return 'EVENT_NOT_AVAILABLE'
+end
+
+local deadlineUnix = tonumber(redis.call('HGET', metaKey, 'apply_deadline_unix') or '0')
+if deadlineUnix > 0 and nowUnix > deadlineUnix then
+  return 'APPLY_DEADLINE_PASSED'
+end
+
+local maxTicketsPerPerson = tonumber(redis.call('HGET', metaKey, 'max_tickets_per_person') or '0')
+if maxTicketsPerPerson <= 0 then
+  return 'EVENT_NOT_AVAILABLE'
+end
+
 local reserved = tonumber(redis.call('GET', userEventReservationKey) or '0')
-if reserved + quantity > remainingAllowance then
+if reserved + quantity > maxTicketsPerPerson then
   return 'EXCEEDS_MAX_TICKETS'
 end
 
