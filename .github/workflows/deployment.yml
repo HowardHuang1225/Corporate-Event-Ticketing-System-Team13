@@ -106,7 +106,7 @@ jobs:
           --docker-email=team13@nthu.edu.tw \
           --dry-run=client -o yaml | kubectl apply -f -
 
-        kubectl apply -f k8s/ -R || true
+        kubectl apply -f k8s/ -R 
         
         BASE_IMAGE="${{ steps.vars.outputs.image_path }}"
         echo "[DEBUG] Base GHCR Path -> $BASE_IMAGE"
