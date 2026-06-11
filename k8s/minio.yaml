@@ -118,24 +118,29 @@ spec:
       containers:
         - name: mc
           image: minio/mc:RELEASE.2024-05-09T17-04-24Z
-          command:
-            - /bin/sh
-            - -c
+          command: ["/bin/sh", "-c"]
+          args:
             - |
-              until mc alias set local http://minio-service:9000 minioadmin minioadmin; do
-                echo "waiting for minio..."
+              set -e
+              echo "Waiting for MinIO to start..."
+              until mc alias set local http://minio-service:9000 $(kubectl get secret app-secret -o jsonpath='{.data.MINIO_ROOT_USER}' | base64 -d) $(kubectl get secret app-secret -o jsonpath='{.data.MINIO_ROOT_PASSWORD}' | base64 -d); do
+                echo "MinIO not ready, retrying in 3 seconds..."
                 sleep 3
               done
 
+              echo "Creating bucket ticketing-attachments..."
               mc mb local/ticketing-attachments || true
+
+              echo "Setting public download policy..."
               mc anonymous set download local/ticketing-attachments || true
 
+              echo "MinIO initialization completed successfully!"
           resources:
             requests:
               cpu: "100m"
-              memory: "64Mi"
-              ephemeral-storage: "100Mi" 
+              memory: "128Mi"
             limits:
               cpu: "200m"
-              memory: "128Mi"
-              ephemeral-storage: "256Mi"
+              memory: "256Mi"
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
