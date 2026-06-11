@@ -8,14 +8,16 @@ metadata:
 data:
   prometheus.yml: |-
     global:
-      scrape_interval: 15s      
+      scrape_interval: 15s      # 每 15 秒抓取一次指標數據
       evaluation_interval: 15s
 
     scrape_configs:
+      # 1. 讓 Prometheus 監控自己
       - job_name: 'prometheus'
         static_configs:
           - targets: ['localhost:9090']
 
+      # 2. 自動發現並監控 K8s 叢集內所有的 Pod 指標 (包含你的前端、後端)
       - job_name: 'kubernetes-pods'
         kubernetes_sd_configs:
           - role: pod
