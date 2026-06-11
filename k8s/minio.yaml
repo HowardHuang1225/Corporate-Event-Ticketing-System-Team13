@@ -11,9 +11,7 @@ spec:
   storageClassName: default
 
 ---
-# ==========================================
-# Service
-# ==========================================
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,9 +31,7 @@ spec:
       targetPort: 9001
 
 ---
-# ==========================================
-# Deployment (MinIO single-node)
-# ==========================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -78,9 +74,7 @@ spec:
             - name: data
               mountPath: /data
 
-          # ==========================================
-          # Health Checks 
-          # ==========================================
+
           readinessProbe:
             httpGet:
               path: /minio/health/ready
@@ -111,9 +105,7 @@ spec:
             claimName: minio-pvc
 
 ---
-# ==========================================
-# Bucket Init Job
-# ==========================================
+
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -135,8 +127,8 @@ spec:
                 sleep 3
               done
 
-              mc mb local/pdfs || true
-              mc policy set public local/pdfs || true
+              mc mb local/ticketing-attachments || true
+              mc anonymous set download local/ticketing-attachments || true
 
           resources:
             requests:

@@ -24,12 +24,13 @@ data:
                         '"$http_user_agent" "$http_x_forwarded_for"';
 
         access_log /var/log/nginx/access_log.log main;
+        client_max_body_size 5m;
 
         sendfile on;
         tcp_nopush on;
         tcp_nodelay on;
         keepalive_timeout 65;
-        keepalive_requests 10000; # 保持長連線，避免極限湧入時頻繁建立 TCP 導致 EOF
+        keepalive_requests 10000; 
 
         upstream backend_servers {
             server backend:8001;
@@ -45,7 +46,6 @@ data:
                 try_files $uri $uri/ /index.html;
             }
 
-            # 處理 API 流量轉發，並注入強大的長連線快取機制
             location /v1/ {
                 proxy_pass http://backend_servers;
                 proxy_http_version 1.1;

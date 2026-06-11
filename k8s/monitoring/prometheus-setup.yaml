@@ -26,7 +26,7 @@ spec:
           - containerPort: 9090
         volumeMounts:
           - name: config-volume
-            mountPath: /etc/prometheus/ # 把 ConfigMap 的內容變成實體檔案塞進去
+            mountPath: /etc/prometheus/ 
         resources:
           requests:
             cpu: "200m"                
@@ -39,7 +39,7 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: prometheus-server-conf # 對齊 ConfigMap 名稱
+            name: prometheus-server-conf 
 
 ---
 apiVersion: v1
